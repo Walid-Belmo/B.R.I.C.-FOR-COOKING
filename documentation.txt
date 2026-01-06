@@ -14,7 +14,9 @@ while the ESP32 focuses solely on generating precise PWM signals.
 2. HARDWARE ARCHITECTURE
 ------------------------
 - **Controller**: ESP32 Development Board.
-- **Actuators**: 4x PWM Servos (likely MG996R or similar standard servos).
+- **Actuators**: 
+  - J1, J2, J3: TD-8120MG High Torque Servos (270° Range).
+  - J4: Servomotor (Model TBD, check if 180° or 270°).
 - **Connection**: USB Serial (UART) between PC and ESP32 at 115200 baud.
 - **Power**: Servos should be powered by an external 5V-6V High Current supply, sharing GND with ESP32.
 
@@ -40,55 +42,52 @@ Pinout Configuration (Current):
   - `s1-1500`  -> Sets Servo 1 to 1500 microseconds.
   - `s3-600`   -> Sets Servo 3 to 600 microseconds.
   - `set`      -> Special command to center all servos to 1500us.
-- **Feedback:** The ESP32 prints acknowledgement messages like `>> Servo 1 moved to 1500µs`, which the Python script can read for verification.
+- **Feedback:** The ESP32 prints acknowledgement messages like `>> Servo 1 moved to 1500µs`.
 
 4. SOFTWARE (PYTHON CONTROL)
 ----------------------------
-**File:** `PYTHON_CONTROL/driver_gui.py`
-**Dependencies:** `tkinter`, `pyserial`, `math`
+**File:** `PYTHON_CONTROL/driver_gui.py` (and `visualize_robot.py`)
+**Dependencies:** `tkinter`, `pyserial`, `numpy`, `matplotlib`
 **Role:** The "Brain" - User Interface, Math, and Command Sender.
 
 **Modules:**
 A. **GUI (Graphical User Interface):**
-   - Provides sliders for manual control of each joint (500-2500us).
-   - Handles Serial connection setup (Port selection, Connect/Disconnect).
-   - Displays real-time logs.
+   - Sliders for manual control (500-2500us).
+   - Handles Serial connection.
+   - Displays real-time logs and calculated XYZ positions.
 
-B. **Kinematics Engine (Calculated in real-time):**
-   - **Input:** Current Pulse Widths (from sliders).
+B. **Kinematics Engine:**
+   - **Input:** Current Pulse Widths.
    - **Process:** 
-     1. Convert Pulse Width -> Angle (Degrees/Radians) using a Linear Map + Trim Offset.
-     2. Apply Geometric Transformations (Rotation Matrices / Trigonometry) based on link lengths.
-   - **Output:** X, Y, Z coordinates of the tool tip (TCP).
-   - **Configuration:** Defines link lengths (`H_BASE`, `J2_OFF`, etc.) and servo calibration scaling.
+     1. Pulse -> Angle: using confirmed scale factors (0.135°/us for 270° servos).
+     2. Angle -> Pose: using **Homogenous Transformation Matrices** (4x4).
+   - **Output:** X, Y, Z coordinates of the tool tip.
 
-C. **Serial Manager:**
-   - Monitors slider changes.
-   - Sends formatted string commands (`s1-1500\n`) to the ESP32 only when values change (deduplicated).
+C. **Visualizer (`visualize_robot.py`):**
+   - A "Digital Twin" of the robot to verify geometric assumptions before writing control code.
 
-5. DATA FLOW
-------------
-[USER] moves Slider on GUI
-   |
-   v
-[PYTHON] calculates new angle from pulse
-[PYTHON] updates Forward Kinematics (X,Y,Z display)
-[PYTHON] formats string "sX-YYYY"
-   |
-   (USB Cable / UART)
-   |
-   v
-[ESP32] receives string
-[ESP32] parses integer values
-[ESP32] updates PWM signal width
-   |
-   v
-[SERVO] moves to physical position
+7. KINEMATICS & GEOMETRY (Detailed Findings)
+--------------------------------------------
+A. Geometric Model Validation
+   - A 3D visualization tool was created, and the user confirmed it matches the physical robot.
+   - **Conclusion:** The robot acts as a chain of offset joints (not planar). Simple trigonometry (Law of Cosines) is insufficient/inaccurate. We will use Matrix Kinematics.
 
-6. CALIBRATION STRATEGY (Planned)
----------------------------------
-To achieve precision, the software relies on two critical mapping steps:
-1. **Pulse-to-Angle:** `Angle = (Pulse - Neutral) * Scale_Factor`. 
-   Requires accurate `Scale_Factor` (how many degrees per microsecond) and `Neutral` (pulse width where the joint is mechanically at 0 degrees).
-2. **Angle-to-Position (DH Parameters):**
-   Requires accurate physical measurements of limb lengths and offsets.
+B. Joint 4 (Wrist) Complexity
+   - J4 rotates around the Z-axis (relative to the forearm).
+   - The Tool Tip is offset in X, Y, and Z relative to the J4 axis.
+   - **Critical Implication:** J4 is NOT just an orientation motor. Because of the offset, rotating J4 causes the tool tip to **orbit** in a circle. This changes the X,Y coordinates of the tip.
+   - The IK solver must account for this "Orbital" behavior.
+
+C. Servo Characteristics (TD-8120MG)
+   - Range: 270 degrees over 2000us pulse delta (500-2500).
+   - **Scale Factor:** 270.0 / 2000.0 = **0.135 degrees/us**.
+   - Note: Standard servos use ~0.09 deg/us. Using the wrong factor results in massive position errors (e.g., commanding 90° yields 135°).
+
+D. Calibration Strategy (Zeroing)
+   - **Mechanical Zero:** The arm is assembled "roughly vertical" at neutral (1500us).
+   - **Software Zero:** We will define "Angle 0" as the Perfect Vertical Pose.
+   - **Procedure:**
+     1. User uses GUI to jog robot until it is perfectly vertical (measured with square ruler).
+     2. Validates J2 and J3 are straight up.
+     3. These specific Pulse Values are saved as `ZERO_OFFSET_PULSE`.
+     4. `Angle = (CurrentPulse - ZERO_OFFSET_PULSE) * 0.135`.

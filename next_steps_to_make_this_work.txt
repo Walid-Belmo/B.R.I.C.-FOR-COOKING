@@ -32,13 +32,14 @@ Goal: Ensure that when code thinks "90 degrees", the robot actually moves 90 deg
 Action Items:
 1. **Define "Zero" Pose**: Decide what the robot looks like when all angles are 0.
    - Proposal: Straight up vertical candle ( | ).
-2. **Calibrate Servo 1 (Base)**:
-   - Command it to move +90 then -90.
-   - Measure if it covers exactly 180 degrees.
-   - Adjust `DEG_PER_US` factor in Python until accurate.
-3. **Calibrate Servos 2, 3, 4**:
+2. **Calibrate Servo 1 (Base - TD-8120MG 270°)**:
+   - Note: Since these are 270° servos, standard library defaults (180°) will be WRONG.
+   - We must find the correct `DEG_PER_US` factor. Expected approx `270 / 2000 = 0.135` deg/us.
+   - Command it to move +90 then -90. Measure with protractor.
+3. **Calibrate Servos 2 & 3 (TD-8120MG 270°)**:
    - Repeat the process.
-   - Set "Trim" values so that at `Angle=0`, the link is perfectly vertical/aligned.
+   - **TRIM**: Since you said neutral (1500) is "roughly vertical but not perfect", we will use the `TRIM` value in Python to mathematically make 0° = Perfect Vertical.
+
 
 PHASE 3: KINEMATICS IMPLEMENTATION (PYTHON)
 -------------------------------------------
