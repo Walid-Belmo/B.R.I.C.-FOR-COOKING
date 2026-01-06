@@ -25,10 +25,13 @@ Target: Direct straight-line distance between the two axis centers.
 -------------------------------------
 Target: From Elbow Axis center to Wrist Axis center.
   - Length (Z_local): 89.75 mm
-  - Forward Shift (X_local): 7.49 mm (CAD) + 3.00 mm (Servo Offset) = 10.49 mm
+  - Forward Shift (X_local): 7.49 mm (CAD) + 4.00 mm (Servo Offset) = 11.49 mm
   - Sideways Shift (Y_local): 5.31 mm (from CAD screenshot)
   - Note: User will compensate for J4 Servo Height in the Tool Tip measurement.
 
 4. WRIST (Servo 4) -> TOOL TIP
 ------------------------------
-[PENDING MEASUREMENT]
+Target: From Wrist Servo Pivot Axis to Tool Tip point.
+  - Vertical (Z_local): 46.00 mm (CAD) + 4.00 mm (Servo Head Offset) = 50.00 mm
+  - Forward Shift (X_local): -14.00 mm (Negative per user instruction "opposite direction")
+  - Sideways Shift (Y_local): -4.64 mm (Negative per user instruction "opposite direction")
