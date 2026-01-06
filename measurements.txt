@@ -1,0 +1,34 @@
+ROBOT PHYSICAL MEASUREMENTS
+===========================
+Method: Extracted from STL CAD files using Slicer Plane Cuts.
+
+1. BASE (Origin) -> SHOULDER (Servo 2)
+--------------------------------------
+Vertical Height (Z):
+  - Base Platform Height: 61.00 mm
+  - Servo 2 Axis Height above Platform: 36.48 mm
+  - Total Z_OFFSET: 97.48 mm
+
+Horizontal Shift (Y):
+  - Lateral offset of Servo 2 from Center: 14.06 mm
+
+Forward Shift (X):
+  - Forward offset of Servo 2 from Center: 1.70 mm
+
+2. SHOULDER (Servo 2) -> ELBOW (Servo 3)
+----------------------------------------
+Target: Direct straight-line distance between the two axis centers.
+  - Length (L1): 120.00 mm
+  - Notes: Perfectly straight link. No offsets observed.
+
+3. ELBOW (Servo 3) -> WRIST (Servo 4)
+-------------------------------------
+Target: From Elbow Axis center to Wrist Axis center.
+  - Length (Z_local): 89.75 mm
+  - Forward Shift (X_local): 7.49 mm (CAD) + 3.00 mm (Servo Offset) = 10.49 mm
+  - Sideways Shift (Y_local): 5.31 mm (from CAD screenshot)
+  - Note: User will compensate for J4 Servo Height in the Tool Tip measurement.
+
+4. WRIST (Servo 4) -> TOOL TIP
+------------------------------
+[PENDING MEASUREMENT]
