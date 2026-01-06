@@ -1,0 +1,62 @@
+NEXT STEPS FOR PRECISE ROBOT CONTROL
+====================================
+
+PHASE 1: PHYSICAL MEASUREMENTS (THE "PAPER" MODEL)
+--------------------------------------------------
+Goal: Replace "magic numbers" in code with real physical dimensions.
+Based on your description, we need the 3D distance between each joint's center of rotation.
+Please provide the following (in mm), keeping the robot in its "Zero" pose (e.g., straight up):
+
+1. **Origin (Base) to Shoulder (Servo 2) [Frame 1 -> 2]**
+   - [ ] Delta Z: Vertical height from table to Servo 2 axis.
+   - [ ] Delta Y: Horizontal sideways distance from Servo 1 axis to Servo 2 axis.
+   - [ ] Delta X: Forward/Back distance (if S2 is pushed forward relative to S1 center).
+
+2. **Shoulder to Elbow (Servo 2 -> 3) [Frame 2 -> 3]**
+   - [ ] Delta Z: Vertical distance between S2 axis and S3 axis.
+   - [ ] Delta X/Y: Any sideways/forward offsets (You mentioned "only vertically", so these might be 0).
+   
+3. **Elbow to Wrist (Servo 3 -> 4) [Frame 3 -> 4]**
+   - [ ] Delta X: Forward distance.
+   - [ ] Delta Y: Sideways distance.
+   - [ ] Delta Z: Vertical distance.
+   
+4. **Wrist to Tool Tip (Servo 4 -> Tip) [Frame 4 -> Tip]**
+   - [ ] Delta X: Forward offset of tip.
+   - [ ] Delta Y: Sideways offset of tip.
+   - [ ] Delta Z: Vertical length of tool.
+
+PHASE 2: ANGLE CALIBRATION (STEP-BY-STEP)
+-----------------------------------------
+Goal: Ensure that when code thinks "90 degrees", the robot actually moves 90 degrees.
+Action Items:
+1. **Define "Zero" Pose**: Decide what the robot looks like when all angles are 0.
+   - Proposal: Straight up vertical candle ( | ).
+2. **Calibrate Servo 1 (Base)**:
+   - Command it to move +90 then -90.
+   - Measure if it covers exactly 180 degrees.
+   - Adjust `DEG_PER_US` factor in Python until accurate.
+3. **Calibrate Servos 2, 3, 4**:
+   - Repeat the process.
+   - Set "Trim" values so that at `Angle=0`, the link is perfectly vertical/aligned.
+
+PHASE 3: KINEMATICS IMPLEMENTATION (PYTHON)
+-------------------------------------------
+Goal: Update the math model with Phase 1 & 2 data.
+Action Items:
+1. Create `kinematics_config.py` to store the new constants.
+2. Update `driver_gui.py` to use a cleaner Vector or Matrix calculation (less error-prone than raw trig).
+3. Verify: Move robot to specific X,Y,Z predicted by Python and measure with ruler.
+
+PHASE 4: INVERSE KINEMATICS (IK)
+--------------------------------
+Goal: Tell the robot "Go to X=100, Y=0, Z=50" and let it calculate angles.
+Action Items:
+1. Implement analytic or geometric IK solver in Python.
+2. Add "Go to Coordinate" fields in the GUI.
+
+PHASE 5: AUTOMATION
+-------------------
+Goal: Cooking Sequence.
+1. Record a sequence of X,Y,Z points.
+2. Replay them to stir/pick up items.

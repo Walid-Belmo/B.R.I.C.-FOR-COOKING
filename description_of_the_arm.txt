@@ -1,0 +1,40 @@
+ROBOT ARM GEOMETRIC DESCRIPTION
+===============================
+
+JOINT CONFIGURATION
+-------------------
+- **Servo 1 (Base):** Axis of Rotation = Z (Yaw / Turntable).
+- **Servo 2 (Shoulder):** Axis of Rotation = X (Pitch).
+- **Servo 3 (Elbow):** Axis of Rotation = X (Pitch).
+- **Servo 4 (Wrist/Tool):** Axis of Rotation = Z (Yaw / Roll). *Note: This is distinct from standard planar arms where J4 is usually Pitch.*
+
+GEOMETRIC OFFSETS (As described by User)
+----------------------------------------
+
+1. **Base -> Joint 2 (Shoulder)**
+   - The Base servo (S1) is mounted on the table (H=0 reference is likely table or base bottom).
+   - Servo 2 is MOUNTED on the S1 turntable.
+   - **Shifts:**
+     - Z-shift: Height difference between S1 base and S2 axis.
+     - Y-shift: Servo 2 is not centered; it has a lateral offset relative to S1 center.
+     - X-shift: (Not explicitly mentioned as significant, but should be checked).
+
+2. **Joint 2 -> Joint 3 (Elbow)**
+   - **Shifts:**
+     - "Shifted only vertically" compared to Servo 2.
+     - This implies the link is primarily a length along the arm's structure.
+
+3. **Joint 3 -> Joint 4 (Wrist)**
+   - **Shifts:** Complex 3D offset.
+     - To get from J3 axis to J4 axis, you travel along X, Y, and Z.
+     - This indicates a "crank" or complex bracket shape.
+
+4. **Joint 4 -> Tool Tip**
+   - **Shifts:** Complex 3D offset.
+     - The tool tip is shifted in X, Y, and Z relative to the J4 axis of rotation.
+
+KINEMATIC IMPLICATIONS
+----------------------
+- Since J2 and J3 are parallel (X-axis) but J4 is Z-axis, this is a 4-DOF arm with a non-planar 4th axis. 
+- The "Y-shift" in the base (J1->J2) is critical; if ignored, the kinematic chain will assume the arm rotates around a central pole, but it actually orbits a center.
+- The "X/Y/Z" shift in the forearm (J3->J4) suggests the math must handle full 3D translation matrices, not just simple trig lengths.

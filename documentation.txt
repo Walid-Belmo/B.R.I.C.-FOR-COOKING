@@ -1,0 +1,94 @@
+PROJECT DOCUMENTATION: 4-DOF ROBOTIC ARM FOR COOKING
+====================================================
+
+1. SYSTEM OVERVIEW
+------------------
+The project controls a 4-degree-of-freedom (4-DOF) robotic arm intended for cooking tasks. 
+The architecture is split into two main components to maximize flexibility and debuggability:
+   A. PC-SIDE (Brain): Python based GUI & Kinematics Engine.
+   B. MCU-SIDE (Muscle): ESP32 Firmware acting as a hardware driver.
+
+This separation allows for complex math and logging to happen on a powerful computer, 
+while the ESP32 focuses solely on generating precise PWM signals.
+
+2. HARDWARE ARCHITECTURE
+------------------------
+- **Controller**: ESP32 Development Board.
+- **Actuators**: 4x PWM Servos (likely MG996R or similar standard servos).
+- **Connection**: USB Serial (UART) between PC and ESP32 at 115200 baud.
+- **Power**: Servos should be powered by an external 5V-6V High Current supply, sharing GND with ESP32.
+
+Pinout Configuration (Current):
+- Servo 1 (Base/Waist) : GPIO 13
+- Servo 2 (Shoulder)   : GPIO 14
+- Servo 3 (Elbow)      : GPIO 22
+- Servo 4 (Wrist/Tool) : GPIO 23
+
+3. FIRMWARE (ESP32)
+-------------------
+**File:** `ESP32_FIRMWARE/simple_servo_control.ino`
+**Role:** "Dumb" Driver.
+**Logic:**
+- It initializes 4 servo objects.
+- It listens on the Serial port for text commands ending in a newline (`\n`).
+- It parses these commands and updates the servo pulse width immediately.
+- It does NOT perform any kinematics or geometric calculations.
+- It enforces safety limits (Min Pulse: 500us, Max Pulse: 2500us).
+
+**Communication Protocol:**
+- **Command Format:** `s[ServoIndex]-[PulseWidth]`
+  - `s1-1500`  -> Sets Servo 1 to 1500 microseconds.
+  - `s3-600`   -> Sets Servo 3 to 600 microseconds.
+  - `set`      -> Special command to center all servos to 1500us.
+- **Feedback:** The ESP32 prints acknowledgement messages like `>> Servo 1 moved to 1500µs`, which the Python script can read for verification.
+
+4. SOFTWARE (PYTHON CONTROL)
+----------------------------
+**File:** `PYTHON_CONTROL/driver_gui.py`
+**Dependencies:** `tkinter`, `pyserial`, `math`
+**Role:** The "Brain" - User Interface, Math, and Command Sender.
+
+**Modules:**
+A. **GUI (Graphical User Interface):**
+   - Provides sliders for manual control of each joint (500-2500us).
+   - Handles Serial connection setup (Port selection, Connect/Disconnect).
+   - Displays real-time logs.
+
+B. **Kinematics Engine (Calculated in real-time):**
+   - **Input:** Current Pulse Widths (from sliders).
+   - **Process:** 
+     1. Convert Pulse Width -> Angle (Degrees/Radians) using a Linear Map + Trim Offset.
+     2. Apply Geometric Transformations (Rotation Matrices / Trigonometry) based on link lengths.
+   - **Output:** X, Y, Z coordinates of the tool tip (TCP).
+   - **Configuration:** Defines link lengths (`H_BASE`, `J2_OFF`, etc.) and servo calibration scaling.
+
+C. **Serial Manager:**
+   - Monitors slider changes.
+   - Sends formatted string commands (`s1-1500\n`) to the ESP32 only when values change (deduplicated).
+
+5. DATA FLOW
+------------
+[USER] moves Slider on GUI
+   |
+   v
+[PYTHON] calculates new angle from pulse
+[PYTHON] updates Forward Kinematics (X,Y,Z display)
+[PYTHON] formats string "sX-YYYY"
+   |
+   (USB Cable / UART)
+   |
+   v
+[ESP32] receives string
+[ESP32] parses integer values
+[ESP32] updates PWM signal width
+   |
+   v
+[SERVO] moves to physical position
+
+6. CALIBRATION STRATEGY (Planned)
+---------------------------------
+To achieve precision, the software relies on two critical mapping steps:
+1. **Pulse-to-Angle:** `Angle = (Pulse - Neutral) * Scale_Factor`. 
+   Requires accurate `Scale_Factor` (how many degrees per microsecond) and `Neutral` (pulse width where the joint is mechanically at 0 degrees).
+2. **Angle-to-Position (DH Parameters):**
+   Requires accurate physical measurements of limb lengths and offsets.
