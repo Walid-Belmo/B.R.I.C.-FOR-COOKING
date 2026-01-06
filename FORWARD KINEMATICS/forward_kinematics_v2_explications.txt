@@ -1,0 +1,192 @@
+================================================================================
+                    EXHAUSTIVE ROBOTIC ARM TECHNICAL MANIFESTO
+================================================================================
+PROJECT: 4-DOF ESP32 Custom Robotic Arm
+VERSION: 1.0
+DATE:    2026-01-05
+TARGET:  Context for LLMs, Engineering Documentation, and Kinematics Engines.
+
+================================================================================
+1. PHYSICAL GEOMETRY & FRAME DEFINITIONS
+================================================================================
+
+1.1. GLOBAL REFERENCE FRAME (WORLD FRAME)
+-----------------------------------------
+The "World Frame" (Frame {0}) is the absolute zero for all Cartesian calculations.
+- ORIGIN (0,0,0): Located at the geometric center of the turntable's top surface.
+  * Note: The math accounts for the physical height from the floor (H_BASE)
+    simply as a Z-translation in the final output, effectively shifting the
+    World Frame Z=0 to the floor level if desired.
+- Z-AXIS (+): Vertical, pointing Up (opposite to gravity).
+- X-AXIS (+): Horizontal, pointing "Forward" relative to the robot's base.
+- Y-AXIS (+): Horizontal, pointing "Left" (Right-Hand Rule compliant).
+
+1.2. JOINT DEFINITIONS & ACTUATOR MAPPING
+-----------------------------------------
+The robot consists of 4 Revolute joints driven by servo motors.
+
+| Joint Index | Name      | Axis of Rotation | Actuator Type | Servo Pin |
+| :---        | :---      | :---             | :---          | :---      |
+| J1 (0)      | Turntable | Z (Yaw)          | PWM Servo     | 13        |
+| J2 (1)      | Shoulder  | X (Pitch)        | PWM Servo     | 14        |
+| J3 (2)      | Elbow     | X (Pitch)        | PWM Servo     | 22        |
+| J4 (3)      | Wrist     | Z (Roll)         | PWM Servo     | 23        |
+
+1.3. LINK OFFSET VECTORS (THE "JUMPS")
+--------------------------------------
+Instead of standard DH parameters (which rely on common normals), this system
+uses "Vector Chaining." We define the 3D translation vector from the
+Center of Rotation (CoR) of Joint[i] to the CoR of Joint[i+1].
+
+All measurements are relative to the PREVIOUS Joint's frame orientation.
+
+* Base Height (H_BASE): 62.3 mm
+  (Distance from floor to World Frame Origin/Turntable Surface).
+
+* VECTOR J1 -> J2 (Turntable to Shoulder):
+  - dx: 0.00 mm
+  - dy: 16.625 mm  (Lateral Offset: Shoulder is mounted to the left of center)
+  - dz: 36.276 mm  (Vertical Offset: Height of shoulder bracket)
+
+* VECTOR J2 -> J3 (Shoulder to Elbow):
+  - dx: 0.00 mm
+  - dy: 0.00 mm
+  - dz: 120.00 mm  (Link Length: Distance between shoulder screw and elbow screw)
+  * Note: We treat the arm link as extending along Z in the local frame before rotation.
+
+* VECTOR J3 -> J4 (Elbow to Wrist):
+  - dx: 11.08 mm   (Forward Offset: Elbow bracket geometry shift)
+  - dy: 0.00 mm
+  - dz: 93.85 mm   (Forearm Length)
+
+* VECTOR J4 -> TCP (Wrist to Tool Center Point):
+  - dx: 0.00 mm
+  - dy: 4.90 mm    (Tool lateral offset)
+  - dz: 45.60 mm   (Tool Length)
+
+================================================================================
+2. CONTROL LOGIC & SIGNAL CONVENTIONS
+================================================================================
+
+2.1. SERVO PROTOCOL
+-------------------
+- Signal: 50Hz PWM
+- Pulse Width Range: 500us to 2500us
+- Neutral (Home) Position: 1500us
+
+2.2. DIRECTIONAL MAPPING (Hardware vs. Math)
+--------------------------------------------
+To ensure the math aligns with the Right-Hand Rule (RHR), we apply direction
+multipliers to the raw servo input.
+
+Equation:
+Angle_Rad = (Pulse - 1500) * (PI / 1000) * Direction_Multiplier
+
+| Joint | Multiplier | Explanation |
+| :---  | :---       | :--- |
+| J1    | +1.0       | Pulse increase -> CCW Rotation (Standard RHR) |
+| J2    | +1.0       | Pulse increase -> Tilts Arm Down (Positive Pitch) |
+| J3    | -1.0       | INVERTED. Pulse increase tilts arm UP (Negative Pitch). |
+| J4    | +1.0       | Pulse increase -> CCW Rotation (Standard RHR) |
+
+================================================================================
+3. MATHEMATICAL IMPLEMENTATION (FORWARD KINEMATICS)
+================================================================================
+
+3.1. THEORY: HOMOGENEOUS TRANSFORMATION MATRICES
+------------------------------------------------
+The position of the tip is calculated by multiplying transformation matrices.
+Since we only track position (x,y,z) for this implementation, we use an
+optimized trigonometric chain rather than full 4x4 matrix multiplication.
+
+3.2. STEP-BY-STEP DERIVATION
+----------------------------
+
+STEP A: Calculate Angles (q)
+   q1 = Raw_J1
+   q2 = Raw_J2
+   q3 = -Raw_J3  (Inversion applied)
+   q4 = Raw_J4
+
+STEP B: Base Frame -> Joint 2 (Shoulder)
+   Frame 2 is rotated by q1 (Yaw) around Z.
+   The Offset J2_OFF is rotated by q1.
+   
+   x2 = (J2_OFF.x * cos(q1)) - (J2_OFF.y * sin(q1))
+   y2 = (J2_OFF.x * sin(q1)) + (J2_OFF.y * cos(q1))
+   z2 = H_BASE + J2_OFF.z
+
+STEP C: Joint 2 -> Joint 3 (Elbow)
+   The arm link (Length = J3_OFF.z) rotates by q2 (Pitch) around the local X-axis.
+   However, since the whole arm also rotates with the turntable (q1), we project
+   the pitch back into World Coordinates.
+
+   Local_Z_Projection = cos(q2)
+   Local_XY_Projection = sin(q2)
+   
+   x3 = x2 + (No change, motion is in Z-plane relative to J2)
+   y3 = y2 - (Link_Length * sin(q2) * cos(q1))  <-- Projecting pitch onto Y
+   z3 = z2 + (Link_Length * cos(q2))
+
+STEP D: Joint 3 -> Joint 4 (Wrist)
+   The forearm angle is cumulative: (q2 + q3).
+   This is a critical distinction: J3 is not independent; it rides on J2.
+   
+   Theta_Forearm = q2 + q3
+   
+   The J3->J4 vector has components in X (11.08) and Z (93.85).
+   Both components must be rotated by Theta_Forearm.
+
+STEP E: Joint 4 -> TCP
+   The final tool offset is added to the wrist position.
+   Note: J4 rotation (Roll) primarily affects orientation, but if the tool
+   has an X/Y offset (TCP_OFF.y = 4.9), J4 rotation will swing the tip in
+   a small circle.
+
+================================================================================
+4. DATA STRUCTURES & CODE ARCHITECTURE
+================================================================================
+
+4.1. ARRAYS & CONSTANTS
+-----------------------
+Instead of objects, we use const float arrays for memory efficiency on the ESP32.
+
+   const float J2_OFF[3] = {x, y, z}; 
+   // Accessed via J2_OFF[0], J2_OFF[1], J2_OFF[2]
+
+4.2. THE 'currentPulses' ARRAY
+------------------------------
+State is maintained in a global integer array:
+   int currentPulses[4];
+   
+This serves as the "Single Source of Truth" for the robot's physical state.
+Any movement command updates this array FIRST, then triggers the servo write,
+then triggers the Kinematics update.
+
+4.3. EXECUTION FLOW
+-------------------
+1. Serial Input ("s2-1600") 
+   -> Parser extracts ID (2) and Pulse (1600).
+2. Validation (Check range 500-2500).
+3. State Update (currentPulses[1] = 1600).
+4. Servo Actuation (myServos[1].writeMicroseconds(1600)).
+5. Kinematics Calculation (updateForwardKinematics()).
+   -> Reads all 4 pulses.
+   -> Converts to Radians.
+   -> Computes XYZ.
+   -> Prints to Serial.
+
+================================================================================
+5. KNOWN LIMITATIONS & EDGE CASES
+================================================================================
+1. Singularity: When q2 + q3 = 0 (Arm straight up), Jacobian becomes singular.
+   (Not an issue for FK, but critical for Inverse Kinematics).
+2. Mechanical Clash: The code does not currently implement collision detection
+   for negative Z values (floor impact) or self-collision.
+3. Pulse Linearity: Assumes perfect linear mapping (1000us = 90deg).
+   Cheap servos may require non-linear calibration maps (Lookup Tables)
+   for high precision.
+
+================================================================================
+END OF MANIFESTO
+================================================================================

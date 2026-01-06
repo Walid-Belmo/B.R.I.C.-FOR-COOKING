@@ -1,0 +1,89 @@
+================================================================================
+                    EXHAUSTIVE ROBOTIC ARM TECHNICAL MANIFESTO
+================================================================================
+PROJECT: 4-DOF ESP32 Custom Robotic Arm
+VERSION: 3.2 (Final Calibrated - Y-Forward Frame)
+DATE:    2026-01-05
+TARGET:  Context for LLMs, Engineering Documentation, and Kinematics Engines.
+
+================================================================================
+1. COORDINATE FRAME & GEOMETRY
+================================================================================
+
+1.1. REFERENCE FRAME (USER CUSTOM)
+----------------------------------
+The Coordinate System is rotated 90 degrees relative to standard textbooks to
+match the user's intuitive "Reach" definition.
+- ORIGIN: Center of Turntable Surface.
+- Y-AXIS (+): Forward (Primary Reaching Direction).
+- X-AXIS (+): Right/Sideways (Shoulder Rotation Axis direction).
+- Z-AXIS (+): Up.
+
+1.2. LINK OFFSET VECTORS (RE-MAPPED TO Y-FORWARD)
+-------------------------------------------------
+* Base Height (H_BASE): 62.3 mm
+
+* VECTOR J1 -> J2 (Turntable to Shoulder):
+  - Side Offset (X): 16.625 mm
+  - Vertical Offset (Z): 36.276 mm
+  - Forward Offset (Y): 0.0 mm
+
+* VECTOR J2 -> J3 (Shoulder to Elbow):
+  - Link Length (Radius): 120.0 mm
+
+* VECTOR J3 -> J4 (Elbow to Wrist):
+  - Forward Shift (Y_Local): 11.08 mm
+  - Link Length (Z_Local): 93.85 mm
+
+* VECTOR J4 -> TCP (Wrist to Tool Center Point):
+  - Side Shift (X_Local): -4.90 mm
+  - Length (Z_Local): 45.60 mm
+
+================================================================================
+2. CONTROL LOGIC & CALIBRATION
+================================================================================
+
+2.1. SERVO SCALING (CRITICAL MEASUREMENT)
+-----------------------------------------
+The TD-8120MG servos (J1, J2, J3) do NOT follow the standard 270 deg spec.
+Calibration Data:
+- Neutral Pulse (0 deg): 1450us (1500 - 50 trim)
+- Horizontal Pulse (90 deg): 2070us
+- Delta: 620us per 90 degrees.
+- Effective Scale: ~290 degrees over 2000us span.
+
+* SCALE_TD8120 = PI / 1240.0  (approx 0.002533 rad/us)
+* SCALE_MG90S  = PI / 2000.0  (Standard 180 spec)
+
+2.2. DIRECTIONAL MAPPING
+------------------------
+- J1 (Turntable): Positive Pulse = Rotate Left (CCW)
+- J2 (Shoulder): Positive Pulse = Reach Forward/Down (Pitch +)
+- J3 (Elbow): INVERTED. Positive Pulse = Pitch Up/Back (Pitch -)
+- J4 (Wrist): Positive Pulse = Roll CCW
+
+2.3. CALIBRATION TRIMS
+----------------------
+- J2 Trim: -50 (Centers the shoulder vertically)
+
+================================================================================
+3. KINEMATICS STRATEGY (EXCAVATOR LOGIC)
+================================================================================
+Since the Shoulder Axis points along X (Side), the arm operates primarily in
+the YZ Plane.
+
+1. Plane Calculation:
+   Calculate Reach (Y) and Height (Z) using J2 and J3 angles.
+   
+2. Tool Integration:
+   Rotate Tool Offset by J4 (Wrist Roll). This mixes the Tool's Side (X) and 
+   Reach (Y) offsets locally.
+   
+3. World Projection:
+   Rotate the entire YZ Plane by J1 (Turntable Yaw).
+   Final_Y = Reach * cos(q1) - Side * sin(q1)
+   Final_X = Reach * sin(q1) + Side * cos(q1)
+
+================================================================================
+END OF MANIFESTO
+================================================================================
