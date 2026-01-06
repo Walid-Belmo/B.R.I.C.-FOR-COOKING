@@ -71,6 +71,7 @@ C. **Visualizer (`visualize_robot.py`):**
 A. Geometric Model Validation
    - A 3D visualization tool was created, and the user confirmed it matches the physical robot.
    - **Conclusion:** The robot acts as a chain of offset joints (not planar). Simple trigonometry (Law of Cosines) is insufficient/inaccurate. We will use Matrix Kinematics.
+   - **Measurement Strategy:** The user is using STL files and Fusion 360's "Mesh Section Sketch" feature to extract the Theoretical Design Dimensions ($L_1, L_2$, Offsets), which is more accurate than physical caliper measurement.
 
 B. Joint 4 (Wrist) Complexity
    - J4 rotates around the Z-axis (relative to the forearm).

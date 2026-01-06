@@ -1,0 +1,57 @@
+GUIDE: HOW TO MEASURE ROBOT DIMENSIONS FROM STLs (High Precision)
+================================================================
+
+Since 3D prints can warp and calipers are hard to use on assembled robots, extracting dimensions from the source STL files is the "Gold Standard" for accuracy.
+
+Even though you only have meshes (STLs), you CAN use Fusion 360 (Free Personal Version) to find the exact centers of rotation.
+
+PRECISE METHOD: Fusion 360 "Mesh Section"
+-----------------------------------------
+This method allows you to "slice" the STL and turn the servo holes into 2D sketch circles, giving you the EXACT center point coordinates.
+
+1. **Import the STL**:
+   - Open Fusion 360.
+   - Go to `Insert` > `Insert Mesh`. Select your STL file.
+   - Click OK.
+
+2. **Create a Slice**:
+   - Go to the `Mesh` tab (top menu).
+   - Select `Create` > `Create Mesh Section Sketch`.
+   - Click on the Mesh body.
+   - Select a Plane (Top, Front, or Right) that cuts through the holes you want to measure (e.g., the servo mounting hole and the next pivot hole).
+   - You can drag the arrow to move the slice up/down until it clearly cuts through both circles.
+   - Click OK. This creates a new Sketch.
+
+3. **Find the Centers**:
+   - Open the content browser on the left, find the new Sketch (under "Sketches"), right-click it and `Edit Sketch`.
+   - The hole walls are now lines.
+   - Press `C` (Circle Tool). Choose "3-Point Circle" (or `Create` > `Circle` > `3-Point Circle`).
+   - Click on 3 points around the rough edge of the servo hole curve.
+   - Fusion will draw a perfect circle and mark the CENTER point.
+   - Repeat for the other pivot hole.
+
+4. **Measure**:
+   - Press `I` (Inspect/Measure).
+   - Click the Center Point of the first circle.
+   - Click the Center Point of the second circle.
+   - Fusion will show:
+     - **Distance**: The direct line length.
+     - **dX, dY, dZ**: The precise offsets (Check the "XYZ Delta" checkbox if needed).
+
+---
+
+ALTERNATIVE: PrusaSlicer (Good, but less precise)
+-------------------------------------------------
+If you cannot use Fusion 360, PrusaSlicer has a basic measurement tool.
+
+1. Load the STL.
+2. Use the **Measure** tool (ruler icon on the left, shortcut `M`).
+3. It tries to snap to vertices (corners of triangles), but STLs are made of triangles, so there is no vertex exactly in the center of a circle.
+   - **Workaround**: 
+     - Click two points on opposite sides of the hole diameter. Note the distance. Calculate the mid-point? (Risky).
+     - **Better**: Use the "Coordinates" feature. 
+       - Orient the part so the hole is flat on the bed.
+       - Look for the bounding box center? (Only works if the part is symmetric).
+
+**CONCLUSION:**
+Use the Fusion 360 "Mesh Section" method. It guarantees you are measuring the design intent (e.g., exactly 120.00mm) effectively ignoring print artifacts.
