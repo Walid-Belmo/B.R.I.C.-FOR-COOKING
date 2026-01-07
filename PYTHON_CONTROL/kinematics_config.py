@@ -34,10 +34,12 @@ J4_TO_TIP_Z = 50.00
 # ==========================================
 # SERVO CONFIGURATION
 # ==========================================
-# Servos: TD-8120MG (270 degree range)
-# Pulse Range: 500us to 2500us (Delta 2000us)
-# Scale: 270 / 2000 = 0.135 degrees per microsecond
-DEG_PER_US = 0.135
+# Servos J1-J3: TD-8120MG (270 degree range)
+#   Scale: 270 / 2000 = 0.135 degrees per microsecond
+# Servo J4: MG90S (180 degree range)
+#   Scale: 180 / 2000 = 0.09 degrees per microsecond
+
+DEG_PER_US = [0.135, 0.135, 0.135, 0.09]
 
 # SERVO DIRECTIONS & OFFSETS
 # --------------------------

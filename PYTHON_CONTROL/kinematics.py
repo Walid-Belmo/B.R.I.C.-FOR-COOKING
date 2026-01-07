@@ -44,7 +44,8 @@ def pulse_to_angle(pulse, trim, joint_idx):
     delta = pulse - neutral_pulse
     
     # 1. Scale to Degrees
-    angle = delta * cfg.DEG_PER_US
+    # Use list of scales for different servo models (e.g. J4 is MG90S)
+    angle = delta * cfg.DEG_PER_US[joint_idx]
     
     # 2. Apply Direction Inversion
     angle = angle * cfg.JOINT_DIRECTIONS[joint_idx]

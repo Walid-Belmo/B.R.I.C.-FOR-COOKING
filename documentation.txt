@@ -16,7 +16,7 @@ while the ESP32 focuses solely on generating precise PWM signals.
 - **Controller**: ESP32 Development Board.
 - **Actuators**: 
   - J1, J2, J3: TD-8120MG High Torque Servos (270° Range).
-  - J4: Servomotor (Model TBD, check if 180° or 270°).
+  - J4: MG90S Micro Servo (180° Range).
 - **Connection**: USB Serial (UART) between PC and ESP32 at 115200 baud.
 - **Power**: Servos should be powered by an external 5V-6V High Current supply, sharing GND with ESP32.
 
@@ -79,10 +79,14 @@ B. Joint 4 (Wrist) Complexity
    - **Critical Implication:** J4 is NOT just an orientation motor. Because of the offset, rotating J4 causes the tool tip to **orbit** in a circle. This changes the X,Y coordinates of the tip.
    - The IK solver must account for this "Orbital" behavior.
 
-C. Servo Characteristics (TD-8120MG)
-   - Range: 270 degrees over 2000us pulse delta (500-2500).
-   - **Scale Factor:** 270.0 / 2000.0 = **0.135 degrees/us**.
-   - Note: Standard servos use ~0.09 deg/us. Using the wrong factor results in massive position errors (e.g., commanding 90° yields 135°).
+C. Servo Characteristics
+   - **J1, J2, J3 (TD-8120MG):** 
+     - Range: 270 degrees.
+     - Scale Factor: **0.135 degrees/us**.
+   - **J4 (MG90S):**
+     - Range: 180 degrees.
+     - Scale Factor: **0.09 degrees/us**.
+     - Note: This was identified during testing where J4 angles were significantly overestimated by the 270-degree logic.
 
 D. Calibration Strategy (Zeroing)
    - **Mechanical Zero:** The arm is assembled "roughly vertical" at neutral (1500us).
