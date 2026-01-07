@@ -2,34 +2,30 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
+import kinematics_config as cfg
 
 # ==========================================
-# GEOMETRY CONFIGURATION (EDIT THIS TO MATCH REALITY)
+# GEOMETRY CONFIGURATION
 # ==========================================
-# All units in mm
+# All units in mm, imported from kinematics_config.py
 
 # 1. Base (Origin) to Shoulder (J2)
-# J1 rotates Z. J2 is shifted.
-J1_TO_J2_Z = 62.3   # Height
-J1_TO_J2_Y = 16.6   # Sideways shift
-J1_TO_J2_X = 0.0    # Forward shift
+J1_TO_J2_Z = cfg.J1_TO_J2_Z
+J1_TO_J2_Y = cfg.J1_TO_J2_Y
+J1_TO_J2_X = cfg.J1_TO_J2_X
 
 # 2. Shoulder (J2) to Elbow (J3)
-# J2 rotates X. Link length is mostly Z (vertical) when 0? 
-# User said J2->J3 is "shifted only vertically".
-J2_TO_J3_LEN = 120.0 # Length of Humerus
+J2_TO_J3_LEN = cfg.J2_TO_J3_LEN
 
 # 3. Elbow (J3) to Wrist (J4)
-# J3 rotates X. J4 is "shifted in X, Y, Z".
-J3_TO_J4_X = 11.0
-J3_TO_J4_Y = 0.0
-J3_TO_J4_Z = 93.8  # Forearm Length
+J3_TO_J4_X = cfg.J3_TO_J4_X
+J3_TO_J4_Y = cfg.J3_TO_J4_Y
+J3_TO_J4_Z = cfg.J3_TO_J4_Z
 
 # 4. Wrist (J4) to Tip
-# J4 rotates Z (NOT X!).
-J4_TO_TIP_X = 0.0
-J4_TO_TIP_Y = 4.9
-J4_TO_TIP_Z = 45.6
+J4_TO_TIP_X = cfg.J4_TO_TIP_X
+J4_TO_TIP_Y = cfg.J4_TO_TIP_Y
+J4_TO_TIP_Z = cfg.J4_TO_TIP_Z
 
 def get_rotation_matrix(axis, angle_deg):
     rad = np.radians(angle_deg)
