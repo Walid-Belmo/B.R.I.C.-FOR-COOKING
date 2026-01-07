@@ -50,7 +50,7 @@ DEG_PER_US = 0.135
 # J2 (Shoulder): Likely Inverted (High pulse = Down).
 # J3 (Elbow): Likely Inverted or Offset.
 
-JOINT_DIRECTIONS = [-1, 1, -1, 1]  # Updated by calibrate.py
+JOINT_DIRECTIONS = [-1, 1, -1, -1]  # Updated by calibrate.py
 JOINT_OFFSETS    = [0.0, 4.1, 0.0, 0.0]  # Calibrated for Z=110 at ~2056us
 
 # Calibration Trims (Pulse Width Offsets)
