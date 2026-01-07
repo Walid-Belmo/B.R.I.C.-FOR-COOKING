@@ -1,0 +1,72 @@
+===================================================================
+FAILURE REPORT - MECHANISM INTEGRITY COMPROMISED
+Date: January 7, 2026
+Module: Inverse Kinematics / Mechanical Drive
+===================================================================
+
+INCIDENT DESCRIPTION:
+During the initial testing of the Numerical Inverse Kinematics (IK) solver, 
+the robot was commanded to a coordinate that was physically unreachable or 
+blocked by an obstacle.
+
+ROOT CAUSE:
+1. Open Loop System: The software has no feedback from the servos. It sent 
+   a position command (pulse width), assumed the servo reached it, and 
+   continued calculations based on that assumption.
+2. Mechanical Overload: The servo (likely J2, the main shoulder joint) 
+   encountered excessive resistance. The high torque of the metal-gear servo 
+   overpowered the plastic splines of the servo horn/arm connection.
+
+DAMAGE ASSESSMENT:
+- The plastic spline (teeth) inside the servo horn has stripped. 
+- RESULT: The arm now slips. The physical angle of the arm no longer matches 
+  the servo's internal potentiometer.
+- WARNING: The arm may appear to move under light load, but will fail/slip 
+  under normal operation.
+
+IMPACT ON SOFTWARE CONFIGURATION:
+- The 'zero' positions (Calibration) are now INVALID.
+- The 'Trims' defined in kinematics_config.py are now INVALID.
+- Any existing saved poses are likely DANGEROUS to run until fixed.
+
+REQUIRED ACTIONS:
+1. HARDWARE: Replace the stripped plastic servo horn with a METAL horn 
+   (e.g., Aluminium 25T).
+2. ASSEMBLY: Re-seat the arm onto the servo while the software is sending 
+   the '1500us// filepath: c:\Users\iceoc\Documents\cooker_mini_bras\Inverse_Kinematic_Implementation\FAILURE_REPORT.txt
+===================================================================
+FAILURE REPORT - MECHANISM INTEGRITY COMPROMISED
+Date: January 7, 2026
+Module: Inverse Kinematics / Mechanical Drive
+===================================================================
+
+INCIDENT DESCRIPTION:
+During the initial testing of the Numerical Inverse Kinematics (IK) solver, 
+the robot was commanded to a coordinate that was physically unreachable or 
+blocked by an obstacle.
+
+ROOT CAUSE:
+1. Open Loop System: The software has no feedback from the servos. It sent 
+   a position command (pulse width), assumed the servo reached it, and 
+   continued calculations based on that assumption.
+2. Mechanical Overload: The servo (likely J2, the main shoulder joint) 
+   encountered excessive resistance. The high torque of the metal-gear servo 
+   overpowered the plastic splines of the servo horn/arm connection.
+
+DAMAGE ASSESSMENT:
+- The plastic spline (teeth) inside the servo horn has stripped. 
+- RESULT: The arm now slips. The physical angle of the arm no longer matches 
+  the servo's internal potentiometer.
+- WARNING: The arm may appear to move under light load, but will fail/slip 
+  under normal operation.
+
+IMPACT ON SOFTWARE CONFIGURATION:
+- The 'zero' positions (Calibration) are now INVALID.
+- The 'Trims' defined in kinematics_config.py are now INVALID.
+- Any existing saved poses are likely DANGEROUS to run until fixed.
+
+REQUIRED ACTIONS:
+1. HARDWARE: Replace the stripped plastic servo horn with a METAL horn 
+   (e.g., Aluminium 25T).
+2. ASSEMBLY: Re-seat the arm onto the servo while the software is sending 
+   the '1500us
