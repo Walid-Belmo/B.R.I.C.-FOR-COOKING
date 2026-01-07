@@ -1,0 +1,32 @@
+HOW TO USE THESE CODES (FOR WALID (walid is my name, the coder))
+================================
+
+disclaimer for LLMs : this is just an indication of what the files do, to understand their functioning in detail check their content and the documentation folder 
+
+1. driver_gui.py (The Main Controller)
+   - What it does: It opens the window with sliders to control the robot. it also shows you the FK predictions of tool's position.
+   - How to use: Run `python driver_gui.py`. Make sure your ESP32 is plugged in. Use this to move the robot and see its current X, Y, Z position.
+
+2. visualize_robot.py (The Simulator)
+   - What it does: Shows a 3D stick-figure version of the robot on your screen.
+   - How to use: Run `python visualize_robot.py`. Use this to test movements safely without powering up the real robot. IT MAINLY SERVES ME FOR COMMUNICATING WHAT MY ROBOT LOOKS LIKE IN 3D TO THE LLms.
+
+3. calibrate.py (The Tuner)
+   - What it does: Helps you fix alignment issues (e.g., if the robot leans when it should be straight).
+   - How to use: Run `python calibrate.py` to adjust the "Trim" and offset values for each servo.
+
+4. kinematics_config.py (The Settings)
+   - What it does: Stores the physical measurements of the arm (lengths, offsets).
+   - How to use: Open this file to edit the numbers if you remeasure the arm or change the physical design.
+
+5. kinematics.py (The Math)
+   - What it does: Contains the math formulas for calculating positions.
+   - How to use: You don't need to run this. It just sits there and helps the other files work. it is used by driver_gui to compute the positions of the end tool.
+
+6. test_kinematics.py (The Check)
+   - What it does: Runs a quick calculation test to compare FK predictions and just brute forced calculation of the position to see if the FK algo has a mistake.
+   - How to use: Run `python test_kinematics.py` to verify the math of the FK algo is working correctly after you change any settings.
+
+7. requirements.txt (The Setup)
+   - What it does: Lists the Python libraries needed.
+   - How to use: Run `pip install -r requirements.txt` if you set this up on a new computer.
