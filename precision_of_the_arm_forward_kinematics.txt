@@ -1,0 +1,27 @@
+FORWARD KINEMATICS ACCURACY REPORT
+====================================
+Date: January 7, 2026
+Method: Manual Verification (Physical vs Calculated)
+
+SUMMARY
+-------
+The Forward Kinematics (FK) model is considered VALID for the current project requirements.
+Geometric offsets, servo scaling factors, and directions have been calibrated.
+
+ACCURACY METRICS
+----------------
+1. Z-Axis (Vertical Height):
+   - Precision: High
+   - Estimated Error: ±1 mm to ±3 mm (Max)
+   - Notes: Demonstrated consistent accuracy during vertical and horizontal arm tests.
+
+2. X/Y-Axis (Planar Reach):
+   - Precision: Good
+   - Estimated Error: ±2 mm to ±5 mm (Max)
+   - Notes: "Worst case" scenario (full extension or complex compound angles) yields ~5mm deviation. Typical usage sees ~2-3mm deviation.
+
+CONTRIBUTING FACTORS
+--------------------
+- Servo 4 (Wrist) Scale Factor: Corrected from 0.135 to 0.09 (MG90S).
+- Joint Offsets: Calibrated manually via GUI.
+- Mechanical Slop: Base wobble contributes to X/Y error at full extension.
