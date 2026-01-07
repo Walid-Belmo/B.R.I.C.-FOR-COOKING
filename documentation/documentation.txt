@@ -46,7 +46,7 @@ Pinout Configuration (Current):
 
 4. SOFTWARE (PYTHON CONTROL)
 ----------------------------
-**File:** `PYTHON_CONTROL/driver_gui.py` (and `visualize_robot.py`)
+**File:** `Slider control with Forward kinematics/driver_gui.py` (and `visualize_robot.py`)
 **Dependencies:** `tkinter`, `pyserial`, `numpy`, `matplotlib`
 **Role:** The "Brain" - User Interface, Math, and Command Sender.
 
