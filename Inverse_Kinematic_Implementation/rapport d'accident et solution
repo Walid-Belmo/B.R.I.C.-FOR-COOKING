@@ -70,3 +70,17 @@ REQUIRED ACTIONS:
    (e.g., Aluminium 25T).
 2. ASSEMBLY: Re-seat the arm onto the servo while the software is sending 
    the '1500us
+
+SOLUTION: 
+
+1-(deconseillé) Buy a fuse before using this shit again at 3 amps
+2(conseillé) ideally you don't buy a fuse and just use a female connector tamiya and connect it to two wires that you connect to the "alimentation sur laquelle tu limites le courant a 3 amp"
+3- tu connais la geometrie de ton bras donc utilise ca pour dessigner le working volume qu'il peut atteindre et le visualiser dans matplotlib
+4- dans la simulation matplotlib ajoute comme contrainte que le bras ne doit pas toucher la base par exemple car rapelle toi c est un cylindre c est facile de verifier si le chemin pris par le bras va l enculer. 
+5- AJOUTE UN BOUTON OFF, physique bien rouge avec une led que tu tiens dans la main si il se passe un truc. comme si tu vois que ca va foirer t'appuie. 
+6- tu peux demander a visualiser sur matplotlib la trajectoire avant de confirmer le mouvement pour tester
+7-discutez en somilant l'apparition d'un DOF en plus de a quel point c aide les trajectoires.
+8-(ESSENTIEL) en theorie pour etre totalement safe, apres chaque action, retourne a ta positio initiale avec le bras vertical et ensuite redescends la ou t'as besoin ca suffit pour cuisiner aussi et ca evite les trajectoire douteuse. 
+
+
+  
