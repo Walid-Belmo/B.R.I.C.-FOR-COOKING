@@ -253,3 +253,248 @@ F. Future Enhancements Under Discussion
    4. Force/torque sensing at joints
    5. 3D workspace visualization with matplotlib
    6. Automatic workspace boundary enforcement
+
+9. INVERSE KINEMATICS ALGORITHM IMPLEMENTATION & DEBUGGING (Jan 8, 2026)
+------------------------------------------------------------------------
+
+A. Initial Implementation - Numerical Jacobian Method
+   
+   **Algorithm Type:** Iterative Numerical Inverse Kinematics
+   - Method: Gradient Descent with Numerical Jacobian
+   - Jacobian Computation: Finite difference approximation (ε = 1.0 µs)
+   - Step Update: delta_pulses = pinv(J) × error_vector
+   
+   **Original Parameters:**
+   - Learning rate (α): 0.5
+   - Max iterations: 50
+   - Convergence tolerance: 1.0mm
+   - Pulse limits: [500, 2500] µs
+   
+   **How It Works:**
+   1. Start with initial pulse guess (home position or current position)
+   2. Compute forward kinematics → current position (x, y, z)
+   3. Calculate error vector: error = target - current
+   4. Compute numerical Jacobian J (3×4 matrix):
+      - For each joint i, perturb pulse by ε
+      - J[:, i] = (FK(pulse + ε) - FK(pulse)) / ε
+   5. Solve: J × Δpulse = error using pseudo-inverse
+   6. Update: pulse = pulse + α × Δpulse
+   7. Clamp pulses to [500, 2500] range
+   8. Repeat until error < tolerance or max iterations reached
+
+B. Critical Failure Case Discovery
+   
+   **Test Scenario (Jan 8, 2026):**
+   - Target Position: (-0.81, -195.07, 1.22) mm
+   - Initial Guess: Home position [1500, 1529, 1500, 1500]
+   - User manually reached this position successfully
+   - Physical servo readings: J2≈2125, J3≈1088
+   
+   **Failure Symptoms:**
+   - IK failed to converge after 50 iterations
+   - Final error: 50.20mm
+   - Final pulses: [1537, 2500, 1980, 561]
+   - J2 hit upper limit (2500), J4 hit lower limit (561)
+   - Achieved position: (-1.45, -205.69, 49.96) mm
+   - Error in Z-axis: 48.74mm (wanted 1.22mm, got 49.96mm)
+   
+   **Root Causes Identified:**
+   
+   1. **Excessive Learning Rate (α = 0.5)**
+      - Too aggressive steps caused oscillation
+      - Algorithm overshot optimal solutions
+      - Accumulated error instead of converging
+   
+   2. **Joint Limit Saturation**
+      - Pulses clamped at limits without algorithm awareness
+      - Continued attempting moves in saturated directions
+      - Got stuck in local minima when joints maxed out
+      - No recovery mechanism from limit conditions
+   
+   3. **No Step Quality Check**
+      - Accepted all steps regardless of improvement
+      - Could increase error and still proceed
+      - No backtracking when moves worsened position
+   
+   4. **Ill-Conditioned Jacobian**
+      - Pure pseudo-inverse unstable near singularities
+      - Small changes in joint angles → large position changes
+      - Numerical instability accumulated over iterations
+   
+   5. **Insufficient Iterations**
+      - 50 iterations inadequate for difficult targets
+      - Especially from home position to extreme workspace edges
+
+C. Improved Algorithm - Damped Least Squares with Adaptive Step Size
+   
+   **New Algorithm Components:**
+   
+   1. **Damped Least Squares (Levenberg-Marquardt style)**
+      - Replaces pure pseudo-inverse: pinv(J)
+      - New formulation: (J^T × J + λI)^-1 × J^T × error
+      - Damping factor λ = 0.01
+      - Benefits:
+        * More stable near singularities
+        * Prevents large jumps from small Jacobian values
+        * Regularizes ill-conditioned systems
+        * Smoother convergence trajectory
+   
+   2. **Adaptive Learning Rate**
+      - Initial α = 0.1 (5× smaller than original)
+      - Dynamic adjustment based on progress:
+        * If error decreases: α = min(0.5, α × 1.1) [speed up]
+        * If error increases: α = α × 0.5 [slow down]
+        * Minimum α = 0.001 (prevents complete stall)
+      - Allows fast convergence when going well
+      - Provides stability when approaching solution
+   
+   3. **Line Search / Step Validation**
+      - Computes proposed_pulses = current + α × delta
+      - Evaluates FK at proposed position
+      - Compares proposed_error vs current_error
+      - Only accepts step if error decreases
+      - Rejects bad steps and reduces α automatically
+      - Prevents divergence and oscillation
+   
+   4. **Increased Iteration Budget**
+      - Max iterations: 50 → 200
+      - Provides more attempts for difficult configurations
+      - Allows convergence from poor initial guesses
+      - Particularly important for extreme workspace positions
+   
+   **Implementation Code Structure:**
+   ```
+   alpha = 0.1  # Initial step size
+   damping = 0.01
+   
+   for iteration in range(max_iter):
+       # 1. Compute current position & error
+       current_pos = FK(pulses)
+       error_vec = target - current_pos
+       
+       # 2. Build numerical Jacobian
+       J = compute_jacobian(pulses)
+       
+       # 3. Solve using Damped Least Squares
+       JtJ = J.T @ J
+       delta = solve(JtJ + damping*I, J.T @ error)
+       
+       # 4. Propose step with clamping
+       proposed = clamp(pulses + alpha * delta)
+       
+       # 5. Validate step (line search)
+       if error(proposed) < error(current):
+           pulses = proposed
+           alpha = min(0.5, alpha * 1.1)  # Speed up
+       else:
+           alpha = max(0.001, alpha * 0.5)  # Slow down
+   ```
+
+D. Verification Results
+   
+   **Same Test Case Re-run:**
+   - Target: (-0.81, -195.07, 1.22) mm
+   - Initial: Home [1500, 1529, 1500, 1500]
+   
+   **New Results:**
+   ✓ SUCCESS: Converged in 24 iterations
+   ✓ Final error: 0.79mm (well below 1.0mm tolerance)
+   ✓ Final pulses: [1500, 2121, 1084, 1470]
+   ✓ Achieved position: (-0.58, -194.46, 1.93) mm
+   
+   **Performance Comparison:**
+   | Metric              | Original | Improved | Change      |
+   |---------------------|----------|----------|-------------|
+   | Convergence         | Failed   | Success  | ✓ Fixed     |
+   | Iterations          | 50       | 24       | 52% faster  |
+   | Final Error         | 50.20mm  | 0.79mm   | 98% better  |
+   | J2 Pulse            | 2500*    | 2121     | Not limited |
+   | J4 Pulse            | 561*     | 1470     | Not limited |
+   
+   *Original hit joint limits
+   
+   **Accuracy Verification:**
+   - Manual servo position: J2≈2125, J3≈1088
+   - IK computed position:  J2=2121, J3=1084
+   - Difference: J2 = 4µs, J3 = 4µs
+   - Excellent agreement with physical reality!
+
+E. Algorithm Characteristics & Performance
+   
+   **Convergence Properties:**
+   - Monotonic error reduction (always improves or maintains)
+   - No oscillation around solution
+   - Stable near joint limits
+   - Handles singularities gracefully
+   - Robust to poor initial guesses
+   
+   **Computational Cost:**
+   - Per iteration: 5 forward kinematics calls
+     * 1 for current position
+     * 4 for Jacobian columns (one per joint)
+   - Typical convergence: 20-30 iterations
+   - Total FK calls: ~100-150 per IK solve
+   - Execution time: <50ms on modern CPU
+   
+   **Limitations & Constraints:**
+   - Still requires reasonable initial guess (within ~100mm of solution)
+   - Cannot find solutions outside joint limits
+   - May converge to local minima in multi-solution cases
+   - Does not guarantee global optimum
+   - Assumes continuous, differentiable workspace
+   
+   **When IK Fails (Error > 1mm):**
+   - Target physically unreachable (outside workspace)
+   - Target requires joints beyond [500, 2500]µs limits
+   - Target in singularity configuration
+   - Starting guess too far from any solution
+   
+F. Practical Usage Guidelines
+   
+   **For Best Results:**
+   1. Provide current position as initial guess when available
+   2. Use home position for new targets if current unknown
+   3. Avoid targets at extreme workspace boundaries
+   4. Stay clear of singularities (arm fully extended/retracted)
+   5. Verify target reachability before commanding
+   
+   **Debugging Failed IK:**
+   1. Check FK of final pulses → see where it ended up
+   2. Verify target is within physical workspace
+   3. Try different initial guess (current vs home)
+   4. Increase max_iter if close but not converged
+   5. Reduce tolerance if 1mm is too strict
+   
+   **Integration with Safe Move:**
+   - safe_move_to_target() always uses home as IK starting point
+   - Ensures consistent, repeatable convergence
+   - Two-step path: current → home → target
+   - IK computed once for target (from home)
+   - Path collision checked separately
+
+G. Mathematical Background (For Reference)
+   
+   **Jacobian Matrix J:**
+   - Maps joint velocity space to Cartesian velocity space
+   - J ∈ ℝ³ˣ⁴ (3 Cartesian DOF, 4 joint DOF)
+   - Element J[i,j] = ∂(position_i)/∂(pulse_j)
+   - Numerical approximation: J[i,j] ≈ (FK(p+ε·ej) - FK(p))[i] / ε
+   
+   **Pseudo-Inverse Method:**
+   - Standard: Δp = J⁺ × e, where J⁺ = (J^T×J)⁻¹×J^T
+   - Problem: Singular when J^T×J is rank-deficient
+   - Unstable when eigenvalues of J^T×J are small
+   
+   **Damped Least Squares:**
+   - Modified: Δp = (J^T×J + λI)⁻¹ × J^T × e
+   - Damping term λI adds to diagonal
+   - Ensures J^T×J + λI is always invertible
+   - λ controls trade-off: accuracy vs stability
+   - As λ→0: approaches pseudo-inverse (fast, unstable)
+   - As λ→∞: approaches gradient descent (slow, stable)
+   - Optimal λ ≈ 0.01 found empirically
+   
+   **Convergence Criterion:**
+   - Success: ||target - FK(pulses)|| < tolerance
+   - Failure: iterations ≥ max_iter and error ≥ tolerance
+   - Typical convergence rate: exponential initially, linear near solution

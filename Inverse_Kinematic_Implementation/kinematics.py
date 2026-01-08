@@ -247,8 +247,9 @@ def inverse_kinematics_numerical(target_x, target_y, target_z, current_pulses=No
         
     trims = cfg.DEFAULT_TRIMS
     
-    # Gradient Descent Parameters
-    alpha = 0.5  # Learning rate (step size)
+    # Improved Gradient Descent Parameters
+    alpha = 0.1  # Smaller learning rate for stability
+    damping = 0.01  # Damping factor for Jacobian regularization
     
     for iteration in range(max_iter):
         # 1. Calculate Current Position with current pulses
@@ -285,19 +286,34 @@ def inverse_kinematics_numerical(target_x, target_y, target_z, current_pulses=No
             col = (pos_perturbed - current_pos) / epsilon
             J[:, i] = col
 
-        # 4. Solves for delta_pulses:  J * delta_pulses = error_vec
-        # Using Pseudo-Inverse for stability
-        # delta_pulses = pinv(J) * error_vec
-        J_pinv = np.linalg.pinv(J)
-        delta_pulses = J_pinv @ error_vec
+        # 4. Solve for delta_pulses using Damped Least Squares (more stable than pure pseudo-inverse)
+        # (J^T * J + damping * I) * delta_pulses = J^T * error_vec
+        JtJ = J.T @ J
+        damping_matrix = damping * np.eye(4)
+        delta_pulses = np.linalg.solve(JtJ + damping_matrix, J.T @ error_vec)
         
-        # 5. Update Pulses
-        # pulses = pulses + alpha * delta_pulses
+        # 5. Adaptive step size - reduce alpha if error is not decreasing
+        proposed_pulses = [pulses[i] + alpha * delta_pulses[i] for i in range(4)]
+        
+        # Clamp proposed pulses
         for i in range(4):
-            pulses[i] += alpha * delta_pulses[i]
-            
-            # Clamp to safety limits
-            pulses[i] = max(500, min(2500, pulses[i]))
+            proposed_pulses[i] = max(500, min(2500, proposed_pulses[i]))
+        
+        # Check if this step improves the error
+        fk_proposed = forward_kinematics(proposed_pulses, trims)
+        proposed_pos = np.array([fk_proposed['x'], fk_proposed['y'], fk_proposed['z']])
+        proposed_error = np.linalg.norm(target_pos - proposed_pos)
+        
+        # If error increased, reduce step size
+        if proposed_error > error_dist:
+            alpha *= 0.5
+            if alpha < 0.001:  # Minimum step size
+                alpha = 0.001
+        else:
+            # Accept the step
+            pulses = proposed_pulses
+            # Gradually increase alpha for faster convergence
+            alpha = min(0.5, alpha * 1.1)
             
     # If we run out of iterations
     return {
@@ -340,20 +356,10 @@ def safe_move_to_target(target_x, target_y, target_z, current_pulses):
     # 2. Get home position
     home_pulses = get_home_position_pulses()
     
-    # 3. Check path from current position to home
-    collision_to_home = check_path_collision(current_pulses, home_pulses)
-    if collision_to_home['collision']:
-        return {
-            'success': False,
-            'error': f'Path to home position collides at {collision_to_home["collision_point"]}',
-            'path': None,
-            'collision_check': collision_to_home
-        }
-    
-    # 4. Calculate IK for target position (starting from home)
+    # 3. Calculate IK for target position (starting from HOME as per safe protocol)
     ik_result = inverse_kinematics_numerical(target_x, target_y, target_z, 
-                                            current_pulses=home_pulses, 
-                                            max_iter=50, 
+                                            current_pulses=home_pulses,  # Start from HOME
+                                            max_iter=200,  # More iterations for convergence
                                             tolerance=1.0)
     
     if not ik_result['success']:
@@ -362,6 +368,18 @@ def safe_move_to_target(target_x, target_y, target_z, current_pulses):
             'error': f'IK failed: error={ik_result["error"]:.2f}mm, iterations={ik_result["iterations"]}',
             'path': None,
             'collision_check': {'ik_failed': True}
+        }
+    
+    target_pulses = ik_result['pulses']
+    
+    # 4. Check path from current position to home
+    collision_to_home = check_path_collision(current_pulses, home_pulses)
+    if collision_to_home['collision']:
+        return {
+            'success': False,
+            'error': f'Path to home position collides at {collision_to_home["collision_point"]}',
+            'path': None,
+            'collision_check': collision_to_home
         }
     
     target_pulses = ik_result['pulses']
