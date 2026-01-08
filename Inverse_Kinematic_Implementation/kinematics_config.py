@@ -53,10 +53,12 @@ DEG_PER_US = [0.135, 0.135, 0.135, 0.09]
 # J3 (Elbow): Likely Inverted or Offset.
 
 JOINT_DIRECTIONS = [-1, 1, -1, -1]  # Updated by calibrate.py
-JOINT_OFFSETS    = [0.0, 4.1, 0.0, 0.0]  # Calibrated for Z=110 at ~2056us
+JOINT_OFFSETS    = [0.0, 4.3, 0.0, 0.0]  # J2 offset: Compensates for geometric/mounting misalignment
+                                          # When GUI shows 85.7°, physical angle is 90° -> need +4.3° correction
+                                          # Verified: -90° position is accurate, +90° needs correction
 
 # Calibration Trims (Pulse Width Offsets)
 # Used to zero the robot. 
 # Target: When Pulse = 1500 + Trim, the joint angle should be logically 0 (Vertical).
 # These will be adjustable in the GUI.
-DEFAULT_TRIMS = [0, -60, 0, 0]
+DEFAULT_TRIMS = [0, 29, 0, 0]  # J2 trim: 29us shift to achieve true vertical (0°) position

@@ -96,3 +96,60 @@ D. Calibration Strategy (Zeroing)
      2. Validates J2 and J3 are straight up.
      3. These specific Pulse Values are saved as `ZERO_OFFSET_PULSE`.
      4. `Angle = (CurrentPulse - ZERO_OFFSET_PULSE) * 0.135`.
+
+E. Calibration Results (Jan 8, 2026 - Inverse Kinematic Implementation)
+   **Phase 1: Angle Display Fix**
+   - **Problem:** GUI showed 1526.3° for J2 when servo was at physical 0°
+   - **Root Cause:** Incorrect DEFAULT_TRIMS and JOINT_OFFSETS from previous calibration
+   - **Solution:** Reset both to zero and recalibrated from scratch
+   - **Result:** Angles now display correctly
+   
+   **Phase 2: Trim Calibration (Pulse Width Level)**
+   - **Goal:** Find pulse width where J2 is at true vertical (0°)
+   - **Method:** Adjusted slider until physical servo was vertical
+   - **Result:** J2 requires 1529µs to be at true 0°
+   - **Configuration:** DEFAULT_TRIMS[1] = 29
+   - **Formula:** Neutral_Pulse = 1500 + 29 = 1529µs
+   
+   **Phase 3: Geometric Offset Calibration (Angle Level)**
+   - **Problem:** When GUI shows 85.7° for J2, physical measurement shows 90° (horizontal)
+   - **Problem:** At -90°, the calibration is accurate (no offset needed)
+   - **Analysis:** This asymmetry suggests either:
+     * Servo mounting isn't perfectly aligned with robot geometry
+     * Physical construction has slight angular deviation
+     * Mechanical compliance/flex at positive angles
+   - **Solution:** Add JOINT_OFFSETS[1] = 4.3°
+   - **Calculation:** Physical_Angle - GUI_Angle = 90.0 - 85.7 = 4.3°
+   - **Formula:** Final_Angle = (Calculated_Angle × Direction) + Offset
+   - **Result:** GUI now reads 90.0° when physical measurement confirms horizontal
+   
+   **Understanding the Two-Stage Calibration:**
+   1. **DEFAULT_TRIMS** (Stage 1): Shifts the pulse-to-angle conversion neutral point
+      - Works at the pulse width level (microseconds)
+      - Corrects for servo centering variations
+      - J2 Example: 1529µs is true mechanical zero, not 1500µs
+      
+   2. **JOINT_OFFSETS** (Stage 2): Compensates for geometric misalignment
+      - Works at the angle level (degrees)
+      - Corrects for mounting angles or design deviations
+      - J2 Example: +4.3° added to account for geometric reality vs. ideal model
+   
+   **Final J2 Calibration:**
+   - DEFAULT_TRIMS[1] = 29 (pulse width correction)
+   - JOINT_OFFSETS[1] = 4.3 (geometric correction)
+   - JOINT_DIRECTIONS[1] = 1 (normal direction)
+   
+   **Trade-off and Precision Limitation:**
+   - With JOINT_OFFSETS[1] = 4.3°, the +90° position is accurate
+   - However, this offset causes -90° to read incorrectly (now reads ~-85.7°)
+   - **Root Cause:** The physical robot exhibits asymmetric behavior - likely due to:
+     * Mechanical compliance/flex under gravity (arm weight pulls differently at +90° vs -90°)
+     * Servo mounting angle not perfectly perpendicular to rotation axis
+     * Structural deflection or joint play that varies with direction
+   - **Practical Solution:** For maximum precision in inverse kinematics operations:
+     * **AVOID negative J2 angles** (below 0°)
+     * **USE positive J2 angles only** (0° to +90° range)
+     * This ensures kinematics accuracy matches physical reality
+     * Trade-off accepted: Workspace is reduced but precision is maintained
+   - **Alternative (not implemented):** Could use non-linear calibration curves or 
+     direction-dependent offsets, but adds complexity for marginal benefit

@@ -59,4 +59,4 @@ JOINT_OFFSETS    = [0.0, 4.1, 0.0, 0.0]  # Calibrated for Z=110 at ~2056us
 # Used to zero the robot. 
 # Target: When Pulse = 1500 + Trim, the joint angle should be logically 0 (Vertical).
 # These will be adjustable in the GUI.
-DEFAULT_TRIMS = [0, -60, 0, 0]
+DEFAULT_TRIMS = [0, 0, 0, 0]
