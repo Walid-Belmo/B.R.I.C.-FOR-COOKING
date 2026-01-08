@@ -64,7 +64,7 @@ class RobotArmApp:
         self.log_text.config(state='disabled')
         
         # File Log
-        with open(self.log_file_path, "a") as f:
+        with open(self.log_file_path, "a", encoding="utf-8") as f:
             f.write(full_msg + "\n")
 
     def setup_ui(self):
