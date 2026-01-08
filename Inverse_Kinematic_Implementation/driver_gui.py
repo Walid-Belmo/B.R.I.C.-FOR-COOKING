@@ -208,25 +208,46 @@ class RobotArmApp:
             self.lbl_ik_status.config(text="Invalid Coordinates", foreground="red")
             return
 
-        self.log_message(f"Calculating IK for Target: ({tx}, {ty}, {tz})")
+        self.log_message(f"=== SAFE MOVE REQUEST: Target ({tx}, {ty}, {tz}) ===")
         
-        # Get current pulses as starting guess
+        # Get current pulses
         current_pulses = [v.get() for v in self.servo_values]
         
-        # Run Inverse Kinematics
-        result = kinematics.inverse_kinematics_numerical(tx, ty, tz, current_pulses=current_pulses, tolerance=1.0)
+        # Use SAFE move function (goes to home first)
+        result = kinematics.safe_move_to_target(tx, ty, tz, current_pulses)
         
         if result['success']:
-            new_pulses = result['pulses']
-            self.log_message(f"IK Success! Iterations: {result['iterations']}, Error: {result['error']:.2f}")
-            self.lbl_ik_status.config(text=f"Success (Err: {result['error']:.2f}mm)", foreground="green")
+            # Extract the two-step path: [home_pulses, target_pulses]
+            home_pulses, target_pulses = result['path']
+            ik_result = result['ik_result']
             
-            # Update Sliders (which triggers the loop to send commands)
+            self.log_message(f"✓ Path validated - No collisions detected")
+            self.log_message(f"✓ IK converged: {ik_result['iterations']} iterations, error: {ik_result['error']:.2f}mm")
+            self.log_message(f"Step 1: Moving to HOME position (vertical)...")
+            
+            # Move to home first
             for i in range(4):
-                self.servo_values[i].set(new_pulses[i])
+                self.servo_values[i].set(home_pulses[i])
+            
+            # Give time for servos to reach home (you might want to add a delay or confirmation)
+            self.root.after(2000, lambda: self.execute_target_move(target_pulses, ik_result))
+            
+            self.lbl_ik_status.config(text=f"Moving via HOME (Err: {ik_result['error']:.2f}mm)", foreground="blue")
         else:
-            self.log_message(f"IK Failed. Error: {result['error']:.2f}mm")
-            self.lbl_ik_status.config(text=f"Unreachable/Failed (Err: {result['error']:.2f}mm)", foreground="red")
+            # Failed - show error
+            self.log_message(f"✗ MOVE ABORTED: {result['error']}")
+            self.lbl_ik_status.config(text=f"BLOCKED: {result['error'][:40]}...", foreground="red")
+    
+    def execute_target_move(self, target_pulses, ik_result):
+        """Called after home position is reached"""
+        self.log_message(f"Step 2: Moving to TARGET position...")
+        
+        # Update sliders to target
+        for i in range(4):
+            self.servo_values[i].set(target_pulses[i])
+        
+        self.log_message(f"✓ Movement complete!")
+        self.lbl_ik_status.config(text=f"Success (Err: {ik_result['error']:.2f}mm)", foreground="green")
 
 if __name__ == "__main__":
     root = tk.Tk()

@@ -143,6 +143,81 @@ def angle_to_pulse(angle, trim, joint_idx):
     
     return int(pulse)
 
+# ==========================================
+# SAFETY FUNCTIONS
+# ==========================================
+
+# Cylindrical base parameters (from incident report)
+BASE_CYLINDER_RADIUS = 60.625 / 2  # mm (diameter 60.625mm)
+BASE_CYLINDER_HEIGHT = 61.0  # mm
+
+def check_collision_with_base(x, y, z):
+    """
+    Checks if a point collides with the cylindrical base.
+    
+    Args:
+        x, y, z: Coordinates in mm
+        
+    Returns:
+        bool: True if collision detected, False if safe
+    """
+    # Check if within cylinder height
+    if z < 0 or z > BASE_CYLINDER_HEIGHT:
+        return False  # Outside vertical range
+    
+    # Check if within cylinder radius
+    distance_from_center = np.sqrt(x**2 + y**2)
+    if distance_from_center < BASE_CYLINDER_RADIUS:
+        return True  # COLLISION!
+    
+    return False  # Safe
+
+def get_home_position_pulses():
+    """
+    Returns the safe home position: all joints at 0° (vertical).
+    This is 1500us + trim for each joint.
+    """
+    home_pulses = []
+    for i in range(4):
+        home_pulses.append(1500 + cfg.DEFAULT_TRIMS[i])
+    return home_pulses
+
+def check_path_collision(start_pulses, end_pulses, num_samples=20):
+    """
+    Checks if a linear path in pulse space will cause collision with base.
+    
+    Args:
+        start_pulses: Starting servo pulses [p1, p2, p3, p4]
+        end_pulses: Ending servo pulses [p1, p2, p3, p4]
+        num_samples: Number of points to check along the path
+        
+    Returns:
+        dict: {'collision': bool, 'collision_point': (x, y, z) or None}
+    """
+    trims = cfg.DEFAULT_TRIMS
+    
+    for i in range(num_samples + 1):
+        t = i / num_samples
+        # Interpolate pulses linearly
+        interpolated_pulses = [
+            start_pulses[j] + t * (end_pulses[j] - start_pulses[j])
+            for j in range(4)
+        ]
+        
+        # Get position at this interpolated pose
+        fk_result = forward_kinematics(interpolated_pulses, trims)
+        x, y, z = fk_result['x'], fk_result['y'], fk_result['z']
+        
+        # Check collision
+        if check_collision_with_base(x, y, z):
+            return {
+                'collision': True,
+                'collision_point': (x, y, z),
+                'progress': t
+            }
+    
+    return {'collision': False, 'collision_point': None}
+
 def inverse_kinematics_numerical(target_x, target_y, target_z, current_pulses=None, max_iter=50, tolerance=1.0):
     """
     Calculates the servo pulses required to reach (target_x, target_y, target_z).
@@ -230,5 +305,86 @@ def inverse_kinematics_numerical(target_x, target_y, target_z, current_pulses=No
         'success': False,
         'error': error_dist,
         'iterations': max_iter
+    }
+
+def safe_move_to_target(target_x, target_y, target_z, current_pulses):
+    """
+    SAFETY-FIRST move function implementing the ESSENTIAL rule from incident report:
+    1. Always return to vertical home position first (all angles 0°)
+    2. Then move to the target position
+    3. Check for collisions along both paths
+    
+    This prevents dangerous trajectories and ensures predictable movement.
+    
+    Args:
+        target_x, target_y, target_z: Target coordinates in mm
+        current_pulses: Current servo positions [p1, p2, p3, p4]
+        
+    Returns:
+        dict: {
+            'success': bool,
+            'error': str or None,
+            'path': list of pulse positions to execute,
+            'collision_check': dict
+        }
+    """
+    # 1. First check if target itself is in collision
+    if check_collision_with_base(target_x, target_y, target_z):
+        return {
+            'success': False,
+            'error': f'Target ({target_x:.1f}, {target_y:.1f}, {target_z:.1f}) collides with base!',
+            'path': None,
+            'collision_check': {'target_collision': True}
+        }
+    
+    # 2. Get home position
+    home_pulses = get_home_position_pulses()
+    
+    # 3. Check path from current position to home
+    collision_to_home = check_path_collision(current_pulses, home_pulses)
+    if collision_to_home['collision']:
+        return {
+            'success': False,
+            'error': f'Path to home position collides at {collision_to_home["collision_point"]}',
+            'path': None,
+            'collision_check': collision_to_home
+        }
+    
+    # 4. Calculate IK for target position (starting from home)
+    ik_result = inverse_kinematics_numerical(target_x, target_y, target_z, 
+                                            current_pulses=home_pulses, 
+                                            max_iter=50, 
+                                            tolerance=1.0)
+    
+    if not ik_result['success']:
+        return {
+            'success': False,
+            'error': f'IK failed: error={ik_result["error"]:.2f}mm, iterations={ik_result["iterations"]}',
+            'path': None,
+            'collision_check': {'ik_failed': True}
+        }
+    
+    target_pulses = ik_result['pulses']
+    
+    # 5. Check path from home to target
+    collision_to_target = check_path_collision(home_pulses, target_pulses)
+    if collision_to_target['collision']:
+        return {
+            'success': False,
+            'error': f'Path from home to target collides at {collision_to_target["collision_point"]}',
+            'path': None,
+            'collision_check': collision_to_target
+        }
+    
+    # 6. All checks passed - return the safe two-step path
+    return {
+        'success': True,
+        'error': None,
+        'path': [home_pulses, target_pulses],
+        'collision_check': {
+            'to_home': collision_to_home,
+            'to_target': collision_to_target
+        },
+        'ik_result': ik_result
     }
 

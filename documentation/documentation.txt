@@ -153,3 +153,103 @@ E. Calibration Results (Jan 8, 2026 - Inverse Kinematic Implementation)
      * Trade-off accepted: Workspace is reduced but precision is maintained
    - **Alternative (not implemented):** Could use non-linear calibration curves or 
      direction-dependent offsets, but adds complexity for marginal benefit
+
+8. SAFETY SYSTEMS (Post-Incident Implementation - Jan 8, 2026)
+--------------------------------------------------------------
+A. Incident Summary (Jan 7, 2026)
+   - During IK testing, robot commanded to unreachable/blocked position
+   - Open-loop system (no feedback) assumed servo reached target
+   - Metal-gear servo overpowered plastic spline in servo horn
+   - Result: Stripped spline, arm slips, calibration invalidated
+   
+B. Root Causes Identified
+   1. No collision detection with base structure
+   2. No path planning (direct trajectories)
+   3. No current limiting on power supply
+   4. No emergency stop mechanism
+   5. Open-loop control without position verification
+
+C. Implemented Software Safety Measures
+   
+   **1. Cylindrical Base Collision Detection**
+   - Base parameters: Radius = 30.3125mm, Height = 61mm
+   - Function: check_collision_with_base(x, y, z)
+   - Checks if any point intersects with cylindrical base volume
+   - Base centered at origin (0, 0, 0) of cartesian frame
+   
+   **2. Path Collision Checking**
+   - Function: check_path_collision(start_pulses, end_pulses, num_samples=20)
+   - Samples 20 points along linear interpolation in pulse space
+   - Computes FK for each sample point
+   - Checks each point for base collision
+   - Returns collision point if detected
+   
+   **3. ESSENTIAL: Safe Move Protocol**
+   - Function: safe_move_to_target(target_x, target_y, target_z, current_pulses)
+   - Implements two-step movement strategy:
+     STEP 1: Always return to HOME position (all angles 0°, vertical)
+     STEP 2: Move from HOME to target position
+   - Rationale:
+     * Predictable, repeatable trajectories
+     * Avoids complex path planning
+     * Sufficient for cooking tasks (pancakes)
+     * Vertical position guarantees base clearance
+   
+   **4. Pre-Movement Validation**
+   - Check 1: Target itself not in collision
+   - Check 2: Path from current → home is collision-free
+   - Check 3: IK converges for target (error < 1mm)
+   - Check 4: Path from home → target is collision-free
+   - If ANY check fails, movement is ABORTED with detailed error
+   
+   **5. GUI Integration**
+   - "Move To Target" button now uses safe_move_to_target()
+   - Logs show validation results before movement
+   - 2-second delay between home and target moves
+   - Status indicators:
+     * Blue: "Moving via HOME" - in progress
+     * Green: "Success" - completed
+     * Red: "BLOCKED" - validation failed
+
+D. Required Hardware Safety Measures (From Incident Report)
+   
+   **1. Current Limiting (ESSENTIAL)**
+   - Limit power supply to 3A maximum
+   - Method: Use lab power supply with current limit feature
+   - Alternative: Add 3A fuse in series with servo power
+   - Prevents mechanical damage if servo stalls
+   
+   **2. Emergency Stop Button (ESSENTIAL)**
+   - Physical red button with LED indicator
+   - Hold in hand during operation
+   - Cuts power to servos immediately
+   - Required for all testing and operation
+   
+   **3. Mechanical Upgrades**
+   - Replace plastic servo horns with metal (aluminum 25T)
+   - Status: Plastic horn replaced (temporary fix)
+   - Permanent solution: Metal horns for all high-torque joints
+   
+   **4. Visual Trajectory Preview (Recommended)**
+   - Matplotlib visualization of planned path before execution
+   - Shows: Current pose → Home → Target
+   - User confirms before robot moves
+   - Not yet implemented
+
+E. Operational Guidelines for Safe Usage
+   1. Always limit power supply current to 3A
+   2. Keep emergency stop button in hand
+   3. Verify home position after power-on
+   4. Use positive J2 angles only (0° to +90°)
+   5. Start with small, slow movements to verify calibration
+   6. Never command positions near workspace limits
+   7. Monitor servo temperatures during operation
+   8. If any unusual sound/resistance: STOP immediately
+
+F. Future Enhancements Under Discussion
+   1. Add 5th DOF to improve trajectory flexibility
+   2. Implement smooth trajectory interpolation (splines)
+   3. Real-time servo position feedback (close the loop)
+   4. Force/torque sensing at joints
+   5. 3D workspace visualization with matplotlib
+   6. Automatic workspace boundary enforcement
