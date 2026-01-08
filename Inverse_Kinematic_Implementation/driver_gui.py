@@ -40,6 +40,11 @@ class RobotArmApp:
         self.target_y = tk.DoubleVar(value=0.0)
         self.target_z = tk.DoubleVar(value=150.0)
 
+        # Jog Variables
+        self.jog_step_size = tk.DoubleVar(value=20.0)
+        self.jog_speed = tk.IntVar(value=5) # 1 to 10
+        self.is_moving = False
+
         self.setup_ui()
         self.setup_logging()
         
@@ -130,6 +135,42 @@ class RobotArmApp:
         self.lbl_ik_status = ttk.Label(ik_frame, text="", foreground="blue")
         self.lbl_ik_status.pack(pady=2)
 
+        # --- Jog Control Frame ---
+        jog_frame = ttk.LabelFrame(self.root, text="Manual Jogging (XYZ)")
+        jog_frame.pack(fill="x", padx=10, pady=5)
+        
+        # Settings (Step Size & Speed)
+        jog_settings_frame = ttk.Frame(jog_frame)
+        jog_settings_frame.pack(fill="x", padx=5, pady=2)
+        
+        ttk.Label(jog_settings_frame, text="Step (mm):").pack(side="left")
+        ttk.Entry(jog_settings_frame, textvariable=self.jog_step_size, width=5).pack(side="left", padx=5)
+        
+        ttk.Label(jog_settings_frame, text="Speed (1-10):").pack(side="left", padx=10)
+        ttk.Scale(jog_settings_frame, from_=1, to=10, variable=self.jog_speed, orient="horizontal", length=100).pack(side="left")
+        ttk.Label(jog_settings_frame, textvariable=self.jog_speed, width=3).pack(side="left")
+        
+        # Directional Buttons
+        btn_frame = ttk.Frame(jog_frame)
+        btn_frame.pack(pady=5)
+        
+        # Grid layout for buttons
+        #       [Z+]
+        # [X-]  [Y+]  [X+]
+        #       [Y-]
+        #       [Z-]
+        
+        # Middle Cluster (X/Y)
+        ttk.Button(btn_frame, text="Y+ (Left)", width=10, command=lambda: self.perform_jog(0, 1, 0)).grid(row=1, column=1, padx=2, pady=2)
+        ttk.Button(btn_frame, text="Y- (Right)", width=10, command=lambda: self.perform_jog(0, -1, 0)).grid(row=3, column=1, padx=2, pady=2)
+        
+        ttk.Button(btn_frame, text="X+ (Fwd)", width=10, command=lambda: self.perform_jog(1, 0, 0)).grid(row=2, column=2, padx=2, pady=2)
+        ttk.Button(btn_frame, text="X- (Back)", width=10, command=lambda: self.perform_jog(-1, 0, 0)).grid(row=2, column=0, padx=2, pady=2)
+        
+        # Vertical (Z)
+        ttk.Button(btn_frame, text="Z+ (Up)", width=10, command=lambda: self.perform_jog(0, 0, 1)).grid(row=0, column=1, padx=2, pady=10)
+        ttk.Button(btn_frame, text="Z- (Down)", width=10, command=lambda: self.perform_jog(0, 0, -1)).grid(row=4, column=1, padx=2, pady=10)
+
         # --- Log Frame ---
         log_frame = ttk.LabelFrame(self.root, text="Logs")
         log_frame.pack(fill="both", expand=True, padx=10, pady=5)
@@ -198,6 +239,83 @@ class RobotArmApp:
         self.lbl_pos.config(text=f"X: {x:.2f} mm | Y: {y:.2f} mm | Z: {z:.2f} mm")
 
         self.root.after(100, self.update_kinematics_loop) # 10Hz update
+
+    def perform_jog(self, dx_dir, dy_dir, dz_dir):
+        """
+        Calculates and executes a relative move (jog).
+        """
+        if self.is_moving:
+            return # Ignore clicks while moving
+
+        try:
+            step = self.jog_step_size.get()
+        except ValueError:
+            return
+
+        dx = dx_dir * step
+        dy = dy_dir * step
+        dz = dz_dir * step
+        
+        current_pulses = [v.get() for v in self.servo_values]
+        
+        # 1. Check Safety
+        result = kinematics.compute_safe_jog(dx, dy, dz, current_pulses)
+        
+        if not result['success']:
+            self.lbl_ik_status.config(text=f"JOG BLOCKED: {result['error']}", foreground="red")
+            self.log_message(f"Jog Blocked: {result['error']}")
+            return
+            
+        # 2. Execute Move
+        target_pulses = result['pulses']
+        speed = self.jog_speed.get()
+        
+        self.log_message(f"Jogging ({dx:.0f}, {dy:.0f}, {dz:.0f}) Speed={speed}...")
+        self.execute_smooth_move(current_pulses, target_pulses, speed)
+
+    def execute_smooth_move(self, start_pulses, target_pulses, speed):
+        """
+        Interpolates from start to target pulses based on speed setting.
+        Speed 10 = Jump (Immediate)
+        Speed 1 = Slowest
+        """
+        self.is_moving = True
+        
+        if speed >= 10:
+            # Immediate Jump
+            for i in range(4):
+                self.servo_values[i].set(target_pulses[i])
+            self.is_moving = False
+            self.lbl_ik_status.config(text="Jog Complete", foreground="green")
+            return
+
+        # Calculate animation frames
+        # speed 1 -> 50 steps
+        # speed 9 -> 5 steps
+        steps = int(50 / speed) 
+        if steps < 5: steps = 5 # Minimum smoothness
+        
+        # Determine pulse deltas
+        deltas = [(target_pulses[i] - start_pulses[i]) / steps for i in range(4)]
+        
+        def animate(step_idx):
+            if step_idx >= steps:
+                # Finalize to exact target
+                for i in range(4):
+                    self.servo_values[i].set(target_pulses[i])
+                self.is_moving = False
+                self.lbl_ik_status.config(text="Jog Complete", foreground="green")
+                return
+            
+            # Apply intermediate values
+            for i in range(4):
+                val = start_pulses[i] + deltas[i] * (step_idx + 1)
+                self.servo_values[i].set(int(val))
+            
+            # Schedule next frame (20ms = 50Hz)
+            self.root.after(20, lambda: animate(step_idx + 1))
+            
+        animate(0)
 
     def move_to_coordinate(self):
         try:

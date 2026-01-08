@@ -489,3 +489,70 @@ I. Testing and Validation
    - Workspace edges: ✓ Good (may need more iterations)
    - Near singularities: ✓ Stable (damping helps)
    - Joint limit boundaries: ✓ Handles gracefully
+
+10. MANUAL JOGGING & SOFTWARE VELOCITY CONTROL (Implemented Jan 8, 2026)
+------------------------------------------------------------------------
+
+A. Overview
+   The "Jogging" feature allows the user to move the tool tip in Cartesian increments 
+   (Relative Moves) using arrow buttons. This is essential for fine-tuning positions 
+   over the stove without knowing absolute coordinates.
+
+   Unlike the "Move to Target" function which goes home first, Jogging moves 
+   **directly** to the new position to allow for practical adjustments.
+
+B. Safety Architecture for Jogging
+   Since we bypass the "Safe Move (Return to Home)" protocol for jogging efficiency, 
+   we implement a dedicated 3-Layer Safety Check for every single click:
+   
+   Layer 1: Target Validity
+   - Calculates target coordinate (Current + Delta).
+   - Checks if Target is inside the Base Cylinder.
+   - If unsafe -> BLOCKS move immediately.
+   
+   Layer 2: Reachability (IK Probe)
+   - Runs Inverse Kinematics for the target.
+   - **Crucial:** It uses the *current* pulses as the "seed" (initial guess).
+     - This ensures the solver finds the "closest" solution in joint space.
+     - Prevents the arm from flipping configuration (e.g., Elbow Up -> Elbow Down) 
+       for a small 10mm move.
+   - If IK fails (unreachable) -> BLOCKS move.
+   
+   Layer 3: Path Collision Scan
+   - Even if Start and End are safe, the path between them might not be.
+   - We interpolate a straight line in pulse space between current and target.
+   - We run Forward Kinematics on intermediate points.
+   - If any point clips the Base Cylinder -> BLOCKS move.
+
+C. Motion Engine: Software Velocity Control
+   The ESP32 firmware is "dumb" - it moves servos at max mechanical speed (Jump). 
+   To provide "Slow/Smooth" jogging, we implemented a software interpolation engine 
+   in Python.
+   
+   **Algorithm:** `execute_smooth_move`
+   1. User selects Speed (1-10).
+   2. Code calculates frame count: `Frames = 50 / Speed`.
+      - Speed 10: 1 Frame (Immediate Jump).
+      - Speed 1: 50 Frames (Very Slow).
+   3. Code calculates pulse increments: `Delta = (Target - Start) / Frames`.
+   4. **Animation Loop:**
+      - Uses `tkinter.after(20, ...)` to fire every 20ms (50Hz).
+      - Updates servo sliders by `Delta` each tick.
+      - Serial commands are sent automatically by the existing change-listener.
+   5. **UI Locking:**
+      - Sets `is_moving = True` at start.
+      - Ignores all button clicks while moving.
+      - Prevents command flooding and race conditions.
+
+D. Key Functions Added
+   - `kinematics.compute_safe_jog(dx, dy, dz, current_pulses)`: The brain.
+   - `driver_gui.perform_jog(axis, direction)`: The trigger.
+   - `driver_gui.execute_smooth_move(...)`: The engine.
+
+E. Usage Guide
+   1. **Step Size:** Set distance in mm (e.g., 20.0).
+   2. **Speed:** Set slide (1=Precise, 10=Fast). Recommended: 3-5 for cooking.
+   3. **Directions:**
+      - **Z+ (Up) / Z- (Down)**: Vertical adjustment.
+      - **Y+ (Left) / Y- (Right)**: Horizontal swing.
+      - **X+ (Fwd) / X- (Back)**: Reach adjustment.

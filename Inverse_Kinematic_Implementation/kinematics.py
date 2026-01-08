@@ -323,6 +323,47 @@ def inverse_kinematics_numerical(target_x, target_y, target_z, current_pulses=No
         'iterations': max_iter
     }
 
+def get_current_xyz(current_pulses):
+    """
+    Helper to get current Cartesian coordinates from pulses.
+    """
+    trims = cfg.DEFAULT_TRIMS
+    fk = forward_kinematics(current_pulses, trims)
+    return fk['x'], fk['y'], fk['z']
+
+def compute_safe_jog(dx, dy, dz, current_pulses):
+    """
+    Calculates the target pulses for a relative move (jog), checking safety constraints.
+    Does NOT move the robot. Returns the target pulses if safe.
+    
+    Args:
+        dx, dy, dz: Relative movement in mm
+        current_pulses: Current servo positions
+        
+    Returns:
+        dict: {'success': bool, 'error': str, 'pulses': list, 'target_pos': tuple}
+    """
+    # 1. Get current position
+    x, y, z = get_current_xyz(current_pulses)
+    target_x, target_y, target_z = x + dx, y + dy, z + dz
+
+    # 2. Check collision at target
+    if check_collision_with_base(target_x, target_y, target_z):
+       return {'success': False, 'error': f"Target ({target_x:.1f}, {target_y:.1f}, {target_z:.1f}) inside Base Cylinder"}
+
+    # 3. Solve IK (Direct move, seeded with current pulses to stay close in configuration space)
+    # Using current pulses as seed is CRITICAL for jogging to ensure small movements
+    ik_res = inverse_kinematics_numerical(target_x, target_y, target_z, current_pulses=current_pulses)
+    if not ik_res['success']:
+       return {'success': False, 'error': f"Unreachable Target (IK Failed, err={ik_res['error']:.1f}mm)"}
+
+    # 4. Check Path Collision (Linear path in pulse space)
+    path_check = check_path_collision(current_pulses, ik_res['pulses'])
+    if path_check['collision']:
+       return {'success': False, 'error': f"Path collides with Base at {path_check['collision_point']}"}
+
+    return {'success': True, 'pulses': ik_res['pulses'], 'target_pos': (target_x, target_y, target_z)}
+
 def safe_move_to_target(target_x, target_y, target_z, current_pulses):
     """
     SAFETY-FIRST move function implementing the ESSENTIAL rule from incident report:
