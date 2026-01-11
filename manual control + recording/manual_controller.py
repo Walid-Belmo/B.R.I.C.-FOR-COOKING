@@ -33,14 +33,16 @@ class RobotManualControl:
     def __init__(self, root):
         self.root = root
         self.root.title("Manual Robot Arm Control & Recorder")
-        self.root.geometry("600x700")
+        self.root.geometry("800x800")
 
         self.serial_port = None
         self.is_connected = False
         
         # State Variables
-        self.servo_values = [1500] * 5 # Current pulse width
-        self.servo_vars = [tk.StringVar(value="1500") for _ in range(5)]
+        self.servo_values = [1500] * 5 # Current pulse width - Floats for slider precision
+        self.servo_vars = [tk.StringVar(value="1500") for _ in range(5)] # For Entry/Label
+        self.slider_vars = [tk.DoubleVar(value=1500.0) for _ in range(5)] # For Sliders
+        
         self.last_sent_values = [1500] * 5
         self.inversions = [tk.BooleanVar(value=False) for _ in range(5)] # True = Inverted
         
@@ -96,20 +98,35 @@ class RobotManualControl:
             f = ttk.Frame(status_frame)
             f.pack(fill="x", pady=2)
             
-            # Name & Keys
-            ttk.Label(f, text=f"{keys_info[i][0]} [{keys_info[i][1]}]", width=25, anchor="w").pack(side="left", padx=5)
+            # Row 1: Name, Slider
+            row1 = ttk.Frame(f)
+            row1.pack(fill="x")
             
+            # Name & Keys
+            ttk.Label(row1, text=f"{keys_info[i][0]} [{keys_info[i][1]}]", width=25, anchor="w").pack(side="left", padx=5)
+            
+            # Slider
+            scale = ttk.Scale(row1, from_=PULSE_MIN, to=PULSE_MAX, variable=self.slider_vars[i], orient="horizontal", command=lambda v, idx=i: self.on_slider_change(idx, v))
+            scale.pack(side="left", fill="x", expand=True, padx=5)
+
+            # Row 2: Entry, Set, Invert
+            row2 = ttk.Frame(f)
+            row2.pack(fill="x", pady=2)
+            
+            # Spacer to align with slider start (approx)
+            ttk.Frame(row2, width=170).pack(side="left") 
+
             # Value Entry
-            entry_val = ttk.Entry(f, textvariable=self.servo_vars[i], width=8, font=("Consolas", 10))
+            entry_val = ttk.Entry(row2, textvariable=self.servo_vars[i], width=8, font=("Consolas", 10))
             entry_val.pack(side="left", padx=5)
             entry_val.bind("<Return>", lambda event, idx=i: self.set_servo_from_entry(idx))
 
             # Set Button
-            btn_set = ttk.Button(f, text="Set", width=4, command=lambda idx=i: self.set_servo_from_entry(idx))
+            btn_set = ttk.Button(row2, text="Set", width=4, command=lambda idx=i: self.set_servo_from_entry(idx))
             btn_set.pack(side="left", padx=2)
             
             # Invert Checkbox
-            cb = ttk.Checkbutton(f, text="Invert", variable=self.inversions[i])
+            cb = ttk.Checkbutton(row2, text="Invert", variable=self.inversions[i])
             cb.pack(side="right", padx=10)
 
         # --- Log Frame ---
@@ -152,6 +169,13 @@ class RobotManualControl:
         self.log_text.see(tk.END)
         self.log_text.config(state='disabled')
 
+    def on_slider_change(self, idx, val):
+        # Update internal value from slider
+        int_val = int(float(val))
+        self.servo_values[idx] = int_val
+        self.servo_vars[idx].set(str(int_val))
+        # No need to send here, serial_loop handles it
+
     def set_servo_from_entry(self, idx):
         try:
             val_str = self.servo_vars[idx].get()
@@ -163,6 +187,7 @@ class RobotManualControl:
             
             # Update internal state
             self.servo_values[idx] = val
+            self.slider_vars[idx].set(val) # Sync slider
             self.servo_vars[idx].set(str(val))
             self.log_message(f"Servo {idx+1} set to {val}")
             
@@ -213,6 +238,7 @@ class RobotManualControl:
                 if new_value != self.servo_values[servo_idx]:
                     self.servo_values[servo_idx] = new_value
                     self.servo_vars[servo_idx].set(str(int(new_value)))
+                    self.slider_vars[servo_idx].set(new_value) # Sync slider
 
         self.root.after(30, self.control_loop) # ~33Hz calculation rate
 
