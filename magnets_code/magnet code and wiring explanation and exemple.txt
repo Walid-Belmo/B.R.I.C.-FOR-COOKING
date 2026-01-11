@@ -1,0 +1,134 @@
+# Project: Dual Electromagnet Control System for Pancake Robot
+**Date:** January 11, 2026
+**Controller:** ESP32
+**Actuators:** 2x 5V DC Electromagnets (3kg Holding Force)
+
+---
+
+## 1. Component Overview & Working Principles
+
+### A. ESP32 Microcontroller
+* **Role:** The "Brain." It sends low-voltage logic signals (3.3V) to the relay module to turn the magnets on or off.
+* **Logic:** It communicates via Serial (USB) to receive commands from your computer and toggles GPIO pins accordingly.
+
+### B. 2-Channel Relay Module (5V, Active LOW)
+* **Role:** The "Switch." Since the ESP32 cannot handle the high current required by the electromagnets, this module uses a small signal to mechanically switch a high-current path.
+* **Working Principle:**
+    * **Input Side:** When the ESP32 sends a LOW (0V) signal to `IN1` or `IN2`, an LED inside the module (optocoupler) turns on, triggering a transistor.
+    * **Output Side:** This energizes the relay coil, creating a magnetic field that physically pulls a metal switch (the "click" sound). This connects the `COM` (Common) terminal to the `NO` (Normally Open) terminal, completing the circuit for the magnet.
+* **Key Feature:** "Active LOW" means sending a `0` turns the switch ON, and sending a `1` turns it OFF.
+
+### C. Electromagnets (5V, 1W, 3kg)
+* **Role:** The "Muscle." Holds the glass container/dispenser against the robot frame.
+* **Working Principle:** When current flows through the copper coil inside, it creates a magnetic field concentrated at the flat face.
+* **Important Constraint:** These are "Holding Magnets." They require direct, flat contact with a ferromagnetic material (steel) to achieve their rated force (3kg). Air gaps drastically reduce strength.
+
+---
+
+## 2. Pinout & Wiring Guide
+
+### Power Connections (The "High Power" Loop)
+* **External 5V Power Supply (+):** Connected to Relay `VCC` pin AND Relay `COM1`.
+* **External Power Supply GND (-):** Connected to Relay `GND` pin, ESP32 `GND`, and Magnet GND wires.
+* **Daisy Chain:** A jumper wire connects Relay `COM1` to Relay `COM2` to share power.
+
+### Signal Connections (The "Low Power" Loop)
+| ESP32 Pin | Relay Module Pin | Function |
+| :--- | :--- | :--- |
+| **GND** | **GND** | Common Ground Reference (Crucial) |
+| **GPIO 23** | **IN1** | Controls Top Magnet (Gravity) |
+| **GPIO 22** | **IN2** | Controls Side Magnet (Anti-Tipping) |
+| *(N/A)* | **VCC** | To External 5V Source |
+
+### Output Connections (To Magnets)
+| Relay Terminal | Component | Description |
+| :--- | :--- | :--- |
+| **COM1** | 5V Source | Common power input |
+| **NO1** | Magnet A (+) | Normally Open (Connects to Top Magnet) |
+| **COM2** | 5V Source | Jumpered from COM1 |
+| **NO2** | Magnet B (+) | Normally Open (Connects to Side Magnet) |
+
+---
+
+## 3. Operations Manual
+
+### Safety
+* **Heat:** Magnets can reach ~60°C if left on for long periods. This is normal but be careful touching them.
+* **Flyback:** The relays isolate the ESP32 from voltage spikes, making this setup safe for the microcontroller.
+
+### Serial Commands (Baud Rate: 115200)
+* `a on`  -> Engages Top Magnet (Secure vertical hold).
+* `b on`  -> Engages Side Magnet (Secure against tipping).
+* `on`    -> Engages BOTH magnets.
+* `off`   -> RELEASES both magnets (Side first, then Top).
+
+---
+
+## 4. The Firmware (C++ / Arduino)
+
+```cpp
+/*
+ * Dual Electromagnet Control for Pancake Robot
+ * Hardware: ESP32, 2-Channel Relay Module, 5V Electromagnets
+ */
+
+// --- PIN DEFINITIONS ---
+const int pinMagnetTop = 23;  // Relay 1 (IN1) - Holds against gravity
+const int pinMagnetSide = 22; // Relay 2 (IN2) - Prevents tipping / shear
+
+void setup() {
+  Serial.begin(115200);
+
+  // Configure pins as outputs
+  pinMode(pinMagnetTop, OUTPUT);
+  pinMode(pinMagnetSide, OUTPUT);
+
+  // INITIAL STATE: OFF
+  // Note: For Active LOW relays, HIGH state means the relay is OPEN (OFF).
+  digitalWrite(pinMagnetTop, HIGH);
+  digitalWrite(pinMagnetSide, HIGH);
+
+  Serial.println("--- Dual Magnet System Ready ---");
+  Serial.println("Type commands: 'a on', 'b on', 'on', 'off'");
+}
+
+void loop() {
+  if (Serial.available() > 0) {
+    String command = Serial.readStringUntil('\n');
+    command.trim(); // Remove whitespace/newlines
+
+    // --- MAGNET A (TOP) ---
+    if (command == "a on") {
+      digitalWrite(pinMagnetTop, LOW); // LOW = Relay Closed (Magnet ON)
+      Serial.println("Top Magnet (A): ENGAGED");
+    }
+    else if (command == "a off") {
+      digitalWrite(pinMagnetTop, HIGH); // HIGH = Relay Open (Magnet OFF)
+      Serial.println("Top Magnet (A): RELEASED");
+    }
+
+    // --- MAGNET B (SIDE) ---
+    else if (command == "b on") {
+      digitalWrite(pinMagnetSide, LOW);
+      Serial.println("Side Magnet (B): ENGAGED");
+    }
+    else if (command == "b off") {
+      digitalWrite(pinMagnetSide, HIGH);
+      Serial.println("Side Magnet (B): RELEASED");
+    }
+
+    // --- GLOBAL CONTROLS ---
+    else if (command == "on") {
+      digitalWrite(pinMagnetTop, LOW);
+      digitalWrite(pinMagnetSide, LOW);
+      Serial.println("ALL MAGNETS: ENGAGED");
+    }
+    else if (command == "off") {
+      // Release sequence to prevent swinging
+      digitalWrite(pinMagnetSide, HIGH); // Release side lock first
+      delay(100);                        // Short delay
+      digitalWrite(pinMagnetTop, HIGH);  // Release gravity hold
+      Serial.println("ALL MAGNETS: RELEASED");
+    }
+  }
+}

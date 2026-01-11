@@ -80,6 +80,8 @@ class RobotArmApp:
         control_frame = ttk.LabelFrame(self.root, text="Servo Control (Pulse Width us)")
         control_frame.pack(fill="x", padx=10, pady=5)
 
+        ttk.Button(control_frame, text="Set All to 1500", command=self.set_all_1500).pack(pady=5)
+
         for i in range(4):
             frame = ttk.Frame(control_frame)
             frame.pack(fill="x", padx=5, pady=5)
@@ -138,6 +140,12 @@ class RobotArmApp:
     def on_slider_change(self, index, value):
         # Debounce or limit sending rate could be added here
         pass
+
+    def set_all_1500(self):
+        for i, var in enumerate(self.servo_values):
+            var.set(1500)
+            self.last_sent_values[i] = -1 # Force update in loop
+        self.log_message("All servos set to 1500us (Raw)")
 
     def send_command(self, servo_idx, pulse_width):
         if self.is_connected and self.serial_port:
