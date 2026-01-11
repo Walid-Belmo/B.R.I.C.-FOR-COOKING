@@ -99,9 +99,14 @@ class RobotManualControl:
             # Name & Keys
             ttk.Label(f, text=f"{keys_info[i][0]} [{keys_info[i][1]}]", width=25, anchor="w").pack(side="left", padx=5)
             
-            # Value Display
-            lbl_val = ttk.Label(f, textvariable=self.servo_vars[i], width=8, font=("Consolas", 10, "bold"))
-            lbl_val.pack(side="left", padx=5)
+            # Value Entry
+            entry_val = ttk.Entry(f, textvariable=self.servo_vars[i], width=8, font=("Consolas", 10))
+            entry_val.pack(side="left", padx=5)
+            entry_val.bind("<Return>", lambda event, idx=i: self.set_servo_from_entry(idx))
+
+            # Set Button
+            btn_set = ttk.Button(f, text="Set", width=4, command=lambda idx=i: self.set_servo_from_entry(idx))
+            btn_set.pack(side="left", padx=2)
             
             # Invert Checkbox
             cb = ttk.Checkbutton(f, text="Invert", variable=self.inversions[i])
@@ -147,12 +152,41 @@ class RobotManualControl:
         self.log_text.see(tk.END)
         self.log_text.config(state='disabled')
 
+    def set_servo_from_entry(self, idx):
+        try:
+            val_str = self.servo_vars[idx].get()
+            val = int(val_str)
+            
+            # Clamp
+            if val < PULSE_MIN: val = PULSE_MIN
+            if val > PULSE_MAX: val = PULSE_MAX
+            
+            # Update internal state
+            self.servo_values[idx] = val
+            self.servo_vars[idx].set(str(val))
+            self.log_message(f"Servo {idx+1} set to {val}")
+            
+            # Refocus root to allow immediate key control
+            self.root.focus_set()
+            
+        except ValueError:
+            self.log_message(f"Invalid input for Servo {idx+1}")
+            self.servo_vars[idx].set(str(int(self.servo_values[idx])))
+
     def on_key_press(self, event):
+        # Ignore key presses if typing in an Entry widget
+        if isinstance(event.widget, (ttk.Entry, tk.Entry)):
+            return
+
         char = event.char.lower()
         if char in KEY_MAP:
             self.active_keys.add(char)
 
     def on_key_release(self, event):
+        # Ignore key releases if typing in an Entry widget
+        if isinstance(event.widget, (ttk.Entry, tk.Entry)):
+            return
+
         char = event.char.lower()
         if char in KEY_MAP:
             self.active_keys.discard(char)
