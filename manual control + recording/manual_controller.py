@@ -243,18 +243,25 @@ class RobotManualControl:
             })
 
     def save_sequence(self):
-        name = self.recording_name.get().strip()
-        if not name: name = "untitled"
+        base_name = self.recording_name.get().strip()
+        if not base_name: base_name = "untitled"
         
         if not os.path.exists(SEQUENCE_DIR):
             os.makedirs(SEQUENCE_DIR)
             
-        filename = f"{name}.json"
+        # Auto-increment to prevent overwrite
+        filename = f"{base_name}.json"
         filepath = os.path.join(SEQUENCE_DIR, filename)
+        
+        counter = 1
+        while os.path.exists(filepath):
+            filename = f"{base_name}_{counter}.json"
+            filepath = os.path.join(SEQUENCE_DIR, filename)
+            counter += 1
         
         # Save payload
         payload = {
-            "name": name,
+            "name": filename.replace(".json", ""), # Use the actual unique name
             "created": time.ctime(),
             "start_position": self.recorded_data[0]["values"] if self.recorded_data else [1500]*5,
             "timeline": self.recorded_data
@@ -265,6 +272,15 @@ class RobotManualControl:
                 json.dump(payload, f, indent=2)
             self.log_message(f"Saved sequence to {filename}")
             self.refresh_sequence_list()
+            
+            # Update the UI name to the next likely sequence name to avoid confusion
+            # If we saved "seq", next suggest "seq_1"
+            # If we saved "seq_1", next suggest "seq_2"
+            if counter > 1:
+                self.recording_name.set(f"{base_name}_{counter}")
+            else:
+                self.recording_name.set(f"{base_name}_1")
+                
         except Exception as e:
             self.log_message(f"Error saving: {e}")
 
