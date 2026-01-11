@@ -1,14 +1,17 @@
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from tkinter import ttk, scrolledtext, filedialog, messagebox
 import serial
 import serial.tools.list_ports
 import time
 import threading
+import json
+import os
 
 # ==========================================
 # CONFIGURATION
 # ==========================================
 BAUD_RATE = 115200
+SEQUENCE_DIR = "recorded_sequences"
 
 # Servo Limits (Safety)
 PULSE_MIN = 500
@@ -50,6 +53,18 @@ class RobotManualControl:
         self.active_keys = set() # Keys currently pressed
         self.speed = tk.IntVar(value=5) # Step size per tick (higher = faster)
         
+        # Recording State
+        self.is_recording = False
+        self.recording_start_time = 0
+        self.recorded_data = [] # List of {"time": t, "values": [v1...v5]}
+        self.recording_name = tk.StringVar(value="my_sequence")
+        
+        # Playback State
+        self.available_sequences = []
+        self.playlist = []
+        self.is_playing = False
+        self.playback_stop_event = threading.Event()
+
         self.setup_ui()
         
         # Key Bindings
@@ -81,6 +96,9 @@ class RobotManualControl:
         ttk.Label(settings_frame, text="Speed (Step Size):").pack(side="left", padx=5)
         ttk.Scale(settings_frame, from_=1, to=50, variable=self.speed, orient="horizontal").pack(side="left", fill="x", expand=True, padx=5)
         ttk.Label(settings_frame, textvariable=self.speed).pack(side="left", padx=5)
+        
+        ttk.Separator(settings_frame, orient="vertical").pack(side="left", fill="y", padx=10, pady=2)
+        ttk.Button(settings_frame, text="Reset All (1500)", command=self.reset_to_neutral).pack(side="left", padx=5)
 
         # --- Servo Status Frame ---
         status_frame = ttk.LabelFrame(self.root, text="Servo Status & Controls")
@@ -129,6 +147,56 @@ class RobotManualControl:
             cb = ttk.Checkbutton(row2, text="Invert", variable=self.inversions[i])
             cb.pack(side="right", padx=10)
 
+        # --- Recording Frame ---
+        rec_frame = ttk.LabelFrame(self.root, text="Recording")
+        rec_frame.pack(fill="x", padx=10, pady=5)
+        
+        ttk.Label(rec_frame, text="Name:").pack(side="left", padx=5)
+        ttk.Entry(rec_frame, textvariable=self.recording_name, width=20).pack(side="left", padx=5)
+        
+        self.btn_record = ttk.Button(rec_frame, text="Start Recording", command=self.toggle_recording)
+        self.btn_record.pack(side="left", padx=10)
+        
+        self.lbl_rec_status = ttk.Label(rec_frame, text="Ready", foreground="gray")
+        self.lbl_rec_status.pack(side="left", padx=5)
+
+        # --- Playback & Playlist Frame ---
+        play_frame = ttk.LabelFrame(self.root, text="Playback & Playlist")
+        play_frame.pack(fill="x", padx=10, pady=5)
+        
+        # Top Controls: Refresh, Play All
+        pf_ctrl = ttk.Frame(play_frame)
+        pf_ctrl.pack(fill="x", padx=5, pady=2)
+        ttk.Button(pf_ctrl, text="Refresh Files", command=self.refresh_sequence_list).pack(side="left", padx=2)
+        ttk.Button(pf_ctrl, text="Safe Play Playlist", command=self.start_playlist_thread).pack(side="right", padx=2)
+        
+        # Dual Listbox (Available -> Playlist)
+        pf_lists = ttk.Frame(play_frame)
+        pf_lists.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Left: Available
+        lf = ttk.LabelFrame(pf_lists, text="Available Sequences")
+        lf.pack(side="left", fill="both", expand=True)
+        self.lst_available = tk.Listbox(lf, height=6)
+        self.lst_available.pack(fill="both", expand=True, padx=2, pady=2)
+        
+        # Buttons: Add/Remove
+        bf = ttk.Frame(pf_lists)
+        bf.pack(side="left", padx=5)
+        ttk.Button(bf, text="Add >>", command=self.add_to_playlist).pack(pady=2)
+        ttk.Button(bf, text="<< Del", command=self.remove_from_playlist).pack(pady=2)
+        ttk.Separator(bf, orient="horizontal").pack(fill="x", pady=5)
+        ttk.Button(bf, text="Up", command=self.move_playlist_up).pack(pady=2)
+        ttk.Button(bf, text="Down", command=self.move_playlist_down).pack(pady=2)
+
+        # Right: Playlist
+        rf = ttk.LabelFrame(pf_lists, text="Execution Playlist")
+        rf.pack(side="left", fill="both", expand=True)
+        self.lst_playlist = tk.Listbox(rf, height=6)
+        self.lst_playlist.pack(fill="both", expand=True, padx=2, pady=2)
+        
+        self.refresh_sequence_list()
+
         # --- Log Frame ---
         log_frame = ttk.LabelFrame(self.root, text="Logs")
         log_frame.pack(fill="both", expand=True, padx=10, pady=5)
@@ -139,6 +207,237 @@ class RobotManualControl:
         # Instructions
         instr_lbl = ttk.Label(self.root, text="Hold keys to move servos. Ensure caps lock is OFF.", foreground="gray")
         instr_lbl.pack(pady=5)
+
+    def toggle_recording(self):
+        if not self.is_recording:
+            # Start
+            self.is_recording = True
+            self.recording_start_time = time.time()
+            self.recorded_data = []
+            
+            # Capture initial state
+            self.record_snapshot()
+            
+            self.btn_record.config(text="Stop Recording")
+            self.lbl_rec_status.config(text="Recording...", foreground="red")
+            self.log_message("Recording STARTED")
+        else:
+            # Stop & Save
+            self.is_recording = False
+            self.btn_record.config(text="Start Recording")
+            self.lbl_rec_status.config(text="Saved", foreground="green")
+            self.save_sequence()
+            self.log_message("Recording STOPPED")
+
+    def record_snapshot(self):
+        if not self.is_recording: return
+        
+        t = time.time() - self.recording_start_time
+        vals = [self.servo_values[i] for i in range(5)]
+        
+        # Only record if changed or first point
+        if not self.recorded_data or self.recorded_data[-1]["values"] != vals:
+            self.recorded_data.append({
+                "time": round(t, 3), # ms precision
+                "values": vals
+            })
+
+    def save_sequence(self):
+        name = self.recording_name.get().strip()
+        if not name: name = "untitled"
+        
+        if not os.path.exists(SEQUENCE_DIR):
+            os.makedirs(SEQUENCE_DIR)
+            
+        filename = f"{name}.json"
+        filepath = os.path.join(SEQUENCE_DIR, filename)
+        
+        # Save payload
+        payload = {
+            "name": name,
+            "created": time.ctime(),
+            "start_position": self.recorded_data[0]["values"] if self.recorded_data else [1500]*5,
+            "timeline": self.recorded_data
+        }
+        
+        try:
+            with open(filepath, 'w') as f:
+                json.dump(payload, f, indent=2)
+            self.log_message(f"Saved sequence to {filename}")
+            self.refresh_sequence_list()
+        except Exception as e:
+            self.log_message(f"Error saving: {e}")
+
+    # --- Playlist Management ---
+    def refresh_sequence_list(self):
+        self.lst_available.delete(0, tk.END)
+        self.available_sequences = []
+        if os.path.exists(SEQUENCE_DIR):
+            for f in os.listdir(SEQUENCE_DIR):
+                if f.endswith(".json"):
+                    self.lst_available.insert(tk.END, f)
+                    self.available_sequences.append(f)
+
+    def add_to_playlist(self):
+        sel = self.lst_available.curselection()
+        if not sel: return
+        fname = self.available_sequences[sel[0]]
+        self.playlist.append(fname)
+        self.lst_playlist.insert(tk.END, fname)
+
+    def remove_from_playlist(self):
+        sel = self.lst_playlist.curselection()
+        if not sel: return
+        idx = sel[0]
+        self.playlist.pop(idx)
+        self.lst_playlist.delete(idx)
+
+    def move_playlist_up(self):
+        sel = self.lst_playlist.curselection()
+        if not sel: return
+        idx = sel[0]
+        if idx > 0:
+            item = self.playlist.pop(idx)
+            self.playlist.insert(idx-1, item)
+            self.rebuild_playlist_ui()
+            self.lst_playlist.selection_set(idx-1)
+
+    def move_playlist_down(self):
+        sel = self.lst_playlist.curselection()
+        if not sel: return
+        idx = sel[0]
+        if idx < len(self.playlist) - 1:
+            item = self.playlist.pop(idx)
+            self.playlist.insert(idx+1, item)
+            self.rebuild_playlist_ui()
+            self.lst_playlist.selection_set(idx+1)
+
+    def rebuild_playlist_ui(self):
+        self.lst_playlist.delete(0, tk.END)
+        for item in self.playlist:
+            self.lst_playlist.insert(tk.END, item)
+
+    # --- Playback Logic ---
+    def start_playlist_thread(self):
+        if not self.playlist:
+            self.log_message("Playlist is empty!")
+            return
+        if self.is_playing:
+            self.log_message("Already playing!")
+            return
+        
+        self.is_playing = True
+        self.playback_stop_event.clear()
+        
+        t = threading.Thread(target=self.run_playlist)
+        t.daemon = True
+        t.start()
+
+    def run_playlist(self):
+        self.log_message("=== Starting Ecosystem Playback ===")
+        
+        try:
+            for i, fname in enumerate(self.playlist):
+                if self.playback_stop_event.is_set(): break
+                
+                self.log_message(f"Preparing: {fname} ({i+1}/{len(self.playlist)})")
+                
+                # Load file
+                path = os.path.join(SEQUENCE_DIR, fname)
+                with open(path, 'r') as f:
+                    seq_data = json.load(f)
+                
+                start_pos = seq_data.get("start_position", [1500]*5)
+                timeline = seq_data.get("timeline", [])
+                
+                # 1. Check Initial Position (Strict Verification)
+                current_server_vals = self.servo_values[:] # Copy
+                if not self.verify_start_position(current_server_vals, start_pos, fname):
+                    break
+                
+                # 2. Execute Timeline
+                self.log_message(f"Playing Sequence: {seq_data['name']}")
+                start_time = time.time()
+                
+                for point in timeline:
+                    if self.playback_stop_event.is_set(): break
+                    
+                    target_time = point["time"]
+                    values = point["values"]
+                    
+                    # Wait until it's time
+                    while (time.time() - start_time) < target_time:
+                         if self.playback_stop_event.is_set(): break
+                         time.sleep(0.01)
+                    
+                    # Update GUI vars (thread-safeish for Tkinter variables?)
+                    # Tkinter isn't thread safe, but setting vars usually works. 
+                    # Ideally use root.after via queue, but for now:
+                    for s_idx in range(5):
+                        self.servo_values[s_idx] = values[s_idx]
+                        
+                    # Send to Serial (is handled by main loop, but we need to update 'last_sent' or force send)
+                    # The main loop reads 'servo_values' constantly. 
+                    # We just updated them. So the main loop will pick it up in <100ms.
+                    
+                    # Update sliders visually
+                    self.root.after(0, lambda v=values: self.update_sliders_from_playback(v))
+
+            self.log_message("=== Playlist Finished ===")
+            
+        except Exception as e:
+            self.log_message(f"Playback Error: {e}")
+        
+        self.is_playing = False
+
+    def update_sliders_from_playback(self, values):
+        for i in range(5):
+             self.slider_vars[i].set(values[i])
+             self.servo_vars[i].set(str(values[i]))
+
+    def verify_start_position(self, current, target, seq_name):
+        """Checks if current position matches target within tolerance. Returns True if OK."""
+        TOLERANCE = 10 # microseconds
+        
+        mismatch = False
+        for i in range(5):
+            if abs(current[i] - target[i]) > TOLERANCE:
+                mismatch = True
+                break
+        
+        if mismatch:
+            err_msg = f"Position mismatch for '{seq_name}'!\n\nRobot: {current}\nExpected: {target}"
+            self.log_message(f"ERROR: {err_msg}")
+            self.root.after(0, lambda: messagebox.showerror("Playback Error", err_msg))
+            return False
+            
+        return True
+
+    def move_to_position_safely(self, current, target):
+        """Linearly interpolates from current to target over 2 seconds to avoid jumps"""
+        # (This function is kept for reference but no longer used in standard playback)
+        self.log_message("Transitioning to start position...")
+        steps = 50
+        duration = 2.0
+        dt = duration / steps
+        
+        for step in range(steps):
+            if self.playback_stop_event.is_set(): return False
+            
+            t = step / float(steps)
+            interp_vals = []
+            for i in range(5):
+                val = current[i] + (target[i] - current[i]) * t
+                interp_vals.append(int(val))
+            
+            # Update system
+            for i in range(5):
+                self.servo_values[i] = interp_vals[i]
+            
+            self.root.after(0, lambda v=interp_vals: self.update_sliders_from_playback(v))
+            time.sleep(dt)
+            
+        return True
 
     def get_serial_ports(self):
         return [comport.device for comport in serial.tools.list_ports.comports()]
@@ -163,6 +462,17 @@ class RobotManualControl:
             self.btn_connect.config(text="Connect")
             self.log_message("Disconnected")
 
+    def reset_to_neutral(self):
+        for i in range(5):
+            self.servo_values[i] = 1500
+            self.servo_vars[i].set("1500")
+            self.slider_vars[i].set(1500.0)
+        
+        self.log_message("All servos reset to 1500")
+        
+        if self.is_recording:
+             self.record_snapshot()
+
     def log_message(self, msg):
         self.log_text.config(state='normal')
         self.log_text.insert(tk.END, f"> {msg}\n")
@@ -175,6 +485,14 @@ class RobotManualControl:
         self.servo_values[idx] = int_val
         self.servo_vars[idx].set(str(int_val))
         # No need to send here, serial_loop handles it
+        
+        # We don't record every micro-move of the slider, but we could sample periodically
+        # Or just rely on the key-release/end of drag equivalent?
+        # For now, let's just record if recording is on, but maybe debounced?
+        # Actually simplest is just record:
+        if self.is_recording:
+             # Limit recording frequency if needed, but current implementation checks for changes
+             self.record_snapshot()
 
     def set_servo_from_entry(self, idx):
         try:
@@ -191,6 +509,9 @@ class RobotManualControl:
             self.servo_vars[idx].set(str(val))
             self.log_message(f"Servo {idx+1} set to {val}")
             
+            # Record change if recording
+            self.record_snapshot()
+
             # Refocus root to allow immediate key control
             self.root.focus_set()
             
@@ -215,6 +536,8 @@ class RobotManualControl:
         char = event.char.lower()
         if char in KEY_MAP:
             self.active_keys.discard(char)
+            # Record final position after key release
+            self.record_snapshot()
 
     def control_loop(self):
         """ Calculates servo positions based on key presses. High frequency for smoothness. """
@@ -239,6 +562,9 @@ class RobotManualControl:
                     self.servo_values[servo_idx] = new_value
                     self.servo_vars[servo_idx].set(str(int(new_value)))
                     self.slider_vars[servo_idx].set(new_value) # Sync slider
+                    
+            if self.is_recording:
+                self.record_snapshot()
 
         self.root.after(30, self.control_loop) # ~33Hz calculation rate
 
