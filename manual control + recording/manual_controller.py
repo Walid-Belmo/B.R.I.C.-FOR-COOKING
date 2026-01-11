@@ -54,8 +54,9 @@ class RobotManualControl:
         self.root.bind("<KeyPress>", self.on_key_press)
         self.root.bind("<KeyRelease>", self.on_key_release)
         
-        # Start Control Loop
+        # Start Control Loops
         self.control_loop()
+        self.serial_loop()
 
     def setup_ui(self):
         # --- Connection Frame ---
@@ -157,9 +158,9 @@ class RobotManualControl:
             self.active_keys.discard(char)
 
     def control_loop(self):
+        """ Calculates servo positions based on key presses. High frequency for smoothness. """
         if self.active_keys:
             step = self.speed.get()
-            updated = False
 
             # Process all active keys
             for key in self.active_keys:
@@ -178,19 +179,22 @@ class RobotManualControl:
                 if new_value != self.servo_values[servo_idx]:
                     self.servo_values[servo_idx] = new_value
                     self.servo_vars[servo_idx].set(str(int(new_value)))
-                    updated = True
 
-            # Send commands if updated
-            if updated and self.is_connected:
-                self.send_servo_updates()
+        self.root.after(30, self.control_loop) # ~33Hz calculation rate
 
-        self.root.after(30, self.control_loop) # ~33Hz update rate for smooth motion
+    def serial_loop(self):
+        """ Sends commands to the robot. Lower frequency to prevent Serial Buffer Flooding. """
+        if self.is_connected:
+            self.send_servo_updates()
+        
+        # 10 Hz (100ms) is safer for the ESP32 that prints verbose output
+        self.root.after(100, self.serial_loop)
 
     def send_servo_updates(self):
-        # Optimize: only send if changed enough (though with buttons we usually want instant feedback)
-        # Use the same logic as before: send individual commands
+        # Send only the LATEST calculated value
         for i in range(5):
             val = int(self.servo_values[i])
+            # Only send if the value has changed since LAST TRANSMISSION
             if val != self.last_sent_values[i]:
                 try:
                     cmd = f"s{i+1}-{val}\n"
