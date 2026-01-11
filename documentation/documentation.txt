@@ -16,7 +16,8 @@ while the ESP32 focuses solely on generating precise PWM signals.
 - **Controller**: ESP32 Development Board.
 - **Actuators**: 
   - J1, J2, J3: TD-8120MG High Torque Servos (270° Range).
-  - J4: MG90S Micro Servo (180° Range).
+  - J4: MF90 Micro Servo (Replaced MG90S).
+  - J5: MF90 Micro Servo (New addition, currently unused in kinematics).
 - **Connection**: USB Serial (UART) between PC and ESP32 at 115200 baud.
 - **Power**: Servos should be powered by an external 5V-6V High Current supply, sharing GND with ESP32.
 
@@ -25,13 +26,19 @@ Pinout Configuration (Current):
 - Servo 2 (Shoulder)   : GPIO 14
 - Servo 3 (Elbow)      : GPIO 22
 - Servo 4 (Wrist/Tool) : GPIO 23
+- Servo 5 (Aux/Spare)  : GPIO 21
+
+**Hardware Change Log (Jan 11, 2026):**
+- **Servo 4 Replacement:** The original MG90S servo failed and was replaced with a generic "MF90" model.
+- **Servo 5 Addition:** A 5th servo (MF90) was added to GPIO 21.
+- **Warning/Risk:** The MF90 specifications are not fully verified against the MG90S. It is assumed to work similarly (PWM range, speed), but this is a potential point of failure or inaccuracy if the torque/travel differs significantly.
 
 3. FIRMWARE (ESP32)
 -------------------
 **File:** `ESP32_FIRMWARE/simple_servo_control.ino`
 **Role:** "Dumb" Driver.
 **Logic:**
-- It initializes 4 servo objects.
+- It initializes 5 servo objects.
 - It listens on the Serial port for text commands ending in a newline (`\n`).
 - It parses these commands and updates the servo pulse width immediately.
 - It does NOT perform any kinematics or geometric calculations.
@@ -41,6 +48,7 @@ Pinout Configuration (Current):
 - **Command Format:** `s[ServoIndex]-[PulseWidth]`
   - `s1-1500`  -> Sets Servo 1 to 1500 microseconds.
   - `s3-600`   -> Sets Servo 3 to 600 microseconds.
+  - `s5-2000`  -> Sets Servo 5 to 2000 microseconds.
   - `set`      -> Special command to center all servos to 1500us.
 - **Feedback:** The ESP32 prints acknowledgement messages like `>> Servo 1 moved to 1500µs`.
 

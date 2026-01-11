@@ -42,7 +42,9 @@ KINEMATIC IMPLICATIONS
 HARDWARE SPECIFICATIONS
 -----------------------
 - **Servos J1, J2, J3**: Model TD-8120MG (270-degree range).
-- **Servo J4**: Assumed standard or 180 (User to confirm if different).
+- **Servo J4**: Model MF90 (Replaced broken MG90S).
+- **Servo J5**: Model MF90 (Spare/Auxiliary on Pin 21).
+- **Note on MF90**: This servo is a substitution for the MG90S. Its exact specs (torque, range) may differ. Treat this as a potential failure point.
 - **Mounting**: The arm is assembled such that at "neutral" servo positions (approx 1500us), the arm is roughly vertical but not perfectly straight.
 
 J4 KINEMATICS CLARIFICATION
