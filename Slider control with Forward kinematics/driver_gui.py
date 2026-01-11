@@ -11,7 +11,7 @@ import kinematics
 # ==========================================
 # CONFIGURATION
 # ==========================================
-DEFAULT_SERVO_PINS = [13, 14, 22, 23]
+DEFAULT_SERVO_PINS = [13, 14, 22, 23, 21]
 BAUD_RATE = 115200
 LOG_DIR = "logs"
 
@@ -29,8 +29,8 @@ class RobotArmApp:
         self.serial_port = None
         self.is_connected = False
         
-        self.servo_values = [tk.IntVar(value=1500) for _ in range(4)]
-        self.last_sent_values = [1500] * 4
+        self.servo_values = [tk.IntVar(value=1500) for _ in range(5)]
+        self.last_sent_values = [1500] * 5
 
         # Trims - imported from kinematics_config
         self.trims = list(kinematics.cfg.DEFAULT_TRIMS) 
@@ -82,7 +82,7 @@ class RobotArmApp:
 
         ttk.Button(control_frame, text="Set All to 1500", command=self.set_all_1500).pack(pady=5)
 
-        for i in range(4):
+        for i in range(5):
             frame = ttk.Frame(control_frame)
             frame.pack(fill="x", padx=5, pady=5)
             
@@ -163,7 +163,7 @@ class RobotArmApp:
         current_pulses = [v.get() for v in self.servo_values]
 
         # 2. Send commands if changed significantly (simple optimization)
-        for i in range(4):
+        for i in range(5):
             if abs(current_pulses[i] - self.last_sent_values[i]) >= 5: # 5us deadband
                 self.send_command(i, current_pulses[i])
                 self.last_sent_values[i] = current_pulses[i]

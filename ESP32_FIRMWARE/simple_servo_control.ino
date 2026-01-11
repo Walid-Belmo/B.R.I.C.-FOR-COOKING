@@ -3,8 +3,8 @@
 // ===================================
 // HARDWARE CONFIGURATION
 // ===================================
-const int numServos = 4;
-const int servoPins[numServos] = {13, 14, 22, 23}; 
+const int numServos = 5;
+const int servoPins[numServos] = {13, 14, 22, 23, 21}; 
 Servo myServos[numServos];
 
 // ===================================
@@ -32,7 +32,7 @@ void setup() {
   Serial.println("Commands:");
   Serial.println("  'set'          -> Center ALL servos (1500us)");
   Serial.println("  's1-1500'      -> Set Servo 1 to 1500us");
-  Serial.println("  's4-2200'      -> Set Servo 4 to 2200us");
+  Serial.println("  's5-2200'      -> Set Servo 5 to 2200us");
   Serial.println("  Range allowed: 500 to 2500");
   Serial.println("---------------------------------------");
 }
@@ -89,7 +89,7 @@ void parseServoCommand(String cmd) {
         Serial.println("⚠️ Error: Pulse must be 500-2500");
       }
     } else {
-      Serial.println("⚠️ Error: Servo number must be 1, 2, 3, or 4");
+      Serial.println("⚠️ Error: Servo number must be 1, 2, 3, 4 or 5");
     }
   } else {
     Serial.println("⚠️ Error: Format must be s[num]-[pulse] (e.g., s1-1500)");
