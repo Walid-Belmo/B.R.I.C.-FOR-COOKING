@@ -1,0 +1,47 @@
+===========================================================
+WIRING GUIDE: ARM + DUAL ELECTROMAGNETS
+===========================================================
+
+IMPORTANT: The previous firmware used pins 22 & 23 for servos.
+Because the magnet example code also used 22 & 23, we had a conflict.
+I have ASSIGNED NEW PINS for the magnets in the new firmware.
+
+1. UPLOAD FIRMWARE FIRST
+------------------------
+Before wiring the magnets, upload the new code:
+`manual control + recording/firmware_with_magnets/controlled_arm_with_magnets.ino`
+to your ESP32.
+
+2. SERVO WIRING (UNCHANGED)
+---------------------------
+Leave your servos exactly as they are:
+- Servo 1: GPIO 13
+- Servo 2: GPIO 14
+- Servo 3: GPIO 22
+- Servo 4: GPIO 23
+- Servo 5: GPIO 21
+
+3. MAGNET WIRING (NEW PINS)
+---------------------------
+You will need your Relay Module.
+
+A. CONNECT RELAY TO ESP32
+   | RELAY PIN | ESP32 PIN | FUNCTION |
+   |-----------|-----------|----------|
+   | GND       | GND       | Common Ground |
+   | IN1       | GPIO 19   | Magnet 1 (Top) Control |
+   | IN2       | GPIO 16   | Magnet 2 (Side) Control |
+   | VCC       | 5V (Ext)  | Power for Relay Optocouplers |
+
+B. CONNECT MAGNETS TO RELAY
+   (Follow the same logic as the original magnet documentation)
+   - External Power (+) -> Relay COM
+   - Relay NO (Normally Open) -> Magnet (+)
+   - Magnet (-) -> External Power (-)
+
+4. TESTING
+----------
+After uploading and wiring:
+1. Open the Manual Controller GUI.
+2. You will see two new buttons "Magnet 1" and "Magnet 2".
+3. Clicking them should click the relays and toggle the magnets.

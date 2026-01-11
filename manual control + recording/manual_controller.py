@@ -49,6 +49,10 @@ class RobotManualControl:
         self.last_sent_values = [1500] * 5
         self.inversions = [tk.BooleanVar(value=False) for _ in range(5)] # True = Inverted
         
+        # Magnet State (False = OFF, True = ON)
+        self.magnet_states = [tk.BooleanVar(value=False), tk.BooleanVar(value=False)] 
+        self.last_sent_magnets = [False, False]
+
         # Movement State
         self.active_keys = set() # Keys currently pressed
         self.speed = tk.IntVar(value=5) # Step size per tick (higher = faster)
@@ -99,6 +103,20 @@ class RobotManualControl:
         
         ttk.Separator(settings_frame, orient="vertical").pack(side="left", fill="y", padx=10, pady=2)
         ttk.Button(settings_frame, text="Reset All (1500)", command=self.reset_to_neutral).pack(side="left", padx=5)
+
+        # --- Magnet Control Frame ---
+        mag_frame = ttk.LabelFrame(self.root, text="Electromagnets")
+        mag_frame.pack(fill="x", padx=10, pady=5)
+        
+        # Magnet 1
+        m1_btn = ttk.Checkbutton(mag_frame, text="Magnet 1 (Top/Gravity)", variable=self.magnet_states[0], 
+                                 command=lambda: self.on_magnet_toggle(0))
+        m1_btn.pack(side="left", padx=20)
+
+        # Magnet 2
+        m2_btn = ttk.Checkbutton(mag_frame, text="Magnet 2 (Side/Tip)", variable=self.magnet_states[1], 
+                                 command=lambda: self.on_magnet_toggle(1))
+        m2_btn.pack(side="left", padx=20)
 
         # --- Servo Status Frame ---
         status_frame = ttk.LabelFrame(self.root, text="Servo Status & Controls")
@@ -235,11 +253,26 @@ class RobotManualControl:
         t = time.time() - self.recording_start_time
         vals = [self.servo_values[i] for i in range(5)]
         
+        # Get magnet states as booleans/ints
+        mags = [self.magnet_states[0].get(), self.magnet_states[1].get()]
+        
         # Only record if changed or first point
-        if not self.recorded_data or self.recorded_data[-1]["values"] != vals:
+        # Compare current state with LAST recorded state
+        current_state = {"values": vals, "magnets": mags}
+        
+        should_record = False
+        if not self.recorded_data:
+            should_record = True
+        else:
+            last = self.recorded_data[-1]
+            if last["values"] != vals or last.get("magnets", [False, False]) != mags:
+                should_record = True
+                
+        if should_record:
             self.recorded_data.append({
                 "time": round(t, 3), # ms precision
-                "values": vals
+                "values": vals,
+                "magnets": mags # Save magnets too
             })
 
     def save_sequence(self):
@@ -260,10 +293,16 @@ class RobotManualControl:
             counter += 1
         
         # Save payload
+        # Current magnets state for start condition
+        start_mags = [self.magnet_states[0].get(), self.magnet_states[1].get()]
+        if self.recorded_data:
+             start_mags = self.recorded_data[0].get("magnets", [False, False])
+
         payload = {
             "name": filename.replace(".json", ""), # Use the actual unique name
             "created": time.ctime(),
             "start_position": self.recorded_data[0]["values"] if self.recorded_data else [1500]*5,
+            "start_magnets": start_mags,
             "timeline": self.recorded_data
         }
         
@@ -274,8 +313,6 @@ class RobotManualControl:
             self.refresh_sequence_list()
             
             # Update the UI name to the next likely sequence name to avoid confusion
-            # If we saved "seq", next suggest "seq_1"
-            # If we saved "seq_1", next suggest "seq_2"
             if counter > 1:
                 self.recording_name.set(f"{base_name}_{counter}")
             else:
@@ -375,27 +412,35 @@ class RobotManualControl:
                 self.log_message(f"Playing Sequence: {seq_data['name']}")
                 start_time = time.time()
                 
+                # Keep track of last sent magnet state to avoid spamming serial
+                last_mags_playback = [False, False] 
+                
                 for point in timeline:
                     if self.playback_stop_event.is_set(): break
                     
                     target_time = point["time"]
                     values = point["values"]
+                    magnets = point.get("magnets", [False, False]) # Default OFF for old files
                     
                     # Wait until it's time
                     while (time.time() - start_time) < target_time:
                          if self.playback_stop_event.is_set(): break
                          time.sleep(0.01)
                     
-                    # Update GUI vars (thread-safeish for Tkinter variables?)
-                    # Tkinter isn't thread safe, but setting vars usually works. 
-                    # Ideally use root.after via queue, but for now:
+                    # Update Servos
                     for s_idx in range(5):
                         self.servo_values[s_idx] = values[s_idx]
                         
-                    # Send to Serial (is handled by main loop, but we need to update 'last_sent' or force send)
-                    # The main loop reads 'servo_values' constantly. 
-                    # We just updated them. So the main loop will pick it up in <100ms.
-                    
+                    # Update Magnets (Direct Send)
+                    if magnets != last_mags_playback:
+                         self.send_magnet_command(0, magnets[0])
+                         self.send_magnet_command(1, magnets[1])
+                         last_mags_playback = magnets[:]
+                         
+                         # Update UI variables
+                         self.magnet_states[0].set(magnets[0])
+                         self.magnet_states[1].set(magnets[1])
+
                     # Update sliders visually
                     self.root.after(0, lambda v=values: self.update_sliders_from_playback(v))
 
@@ -405,6 +450,13 @@ class RobotManualControl:
             self.log_message(f"Playback Error: {e}")
         
         self.is_playing = False
+
+    def send_magnet_command(self, idx, state):
+         if self.is_connected and self.serial_port:
+             cmd = f"m{idx+1}-{1 if state else 0}\n"
+             try:
+                self.serial_port.write(cmd.encode())
+             except: pass
 
     def update_sliders_from_playback(self, values):
         for i in range(5):
@@ -484,10 +536,32 @@ class RobotManualControl:
             self.servo_vars[i].set("1500")
             self.slider_vars[i].set(1500.0)
         
+        # Optionally reset magnets too?
+        # self.magnet_states[0].set(False)
+        # self.magnet_states[1].set(False)
+        # self.on_magnet_toggle(0)
+        # self.on_magnet_toggle(1)
+        
         self.log_message("All servos reset to 1500")
         
         if self.is_recording:
              self.record_snapshot()
+
+    def on_magnet_toggle(self, idx):
+        # 1. Send Command Immediately
+        state = self.magnet_states[idx].get()
+        cmd = f"m{idx+1}-{1 if state else 0}\n"
+        if self.is_connected and self.serial_port:
+             try:
+                self.serial_port.write(cmd.encode())
+                self.last_sent_magnets[idx] = state
+                self.log_message(f"Magnet {idx+1} {'ON' if state else 'OFF'}")
+             except Exception as e:
+                self.log_message(f"Serial Error: {e}")
+        
+        # 2. Record if recording
+        if self.is_recording:
+            self.record_snapshot()
 
     def log_message(self, msg):
         self.log_text.config(state='normal')
