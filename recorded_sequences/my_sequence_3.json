@@ -1,0 +1,59 @@
+{
+  "name": "my_sequence_3",
+  "created": "Mon Jan 12 00:21:49 2026",
+  "start_position": [
+    1500,
+    1500,
+    1500,
+    1500,
+    1500
+  ],
+  "start_magnets": [
+    false,
+    false
+  ],
+  "timeline": [
+    {
+      "time": 0.0,
+      "values": [
+        1500,
+        1500,
+        1500,
+        1500,
+        1500
+      ],
+      "magnets": [
+        false,
+        false
+      ]
+    },
+    {
+      "time": 1.059,
+      "values": [
+        1500,
+        1500,
+        1500,
+        1500,
+        1500
+      ],
+      "magnets": [
+        true,
+        false
+      ]
+    },
+    {
+      "time": 2.603,
+      "values": [
+        1500,
+        1500,
+        1500,
+        1500,
+        1500
+      ],
+      "magnets": [
+        false,
+        false
+      ]
+    }
+  ]
+}
