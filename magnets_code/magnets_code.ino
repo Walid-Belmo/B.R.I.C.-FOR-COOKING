@@ -9,7 +9,7 @@ const int numServos = 5;
 // Original Pins: {13, 14, 22, 23, 21}
 // Note: 22 and 23 are kept for servos. 
 // Magnets must move to new pins.
-const int servoPins[numServos] = {13, 14, 22, 23, 15}; 
+const int servoPins[numServos] = {13, 14, 22, 23, 21}; 
 Servo myServos[numServos];
 
 // --- ELECTROMAGNETS (RELAYS) ---
