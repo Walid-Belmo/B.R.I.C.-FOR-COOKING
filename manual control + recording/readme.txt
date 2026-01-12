@@ -19,7 +19,7 @@ This tool allows you to manually control a 5-DOF robot arm, record your movement
 3. HARDWARE & SETUP
 -------------------
 - **Firmware**: Ensure the ESP32 is running `ESP32_FIRMWARE/simple_servo_control.ino`.
-- **Wiring**: Servos connected to pins [13, 14, 22, 23, 15].
+- **Wiring**: Servos connected to pins [13, 14, 22, 23, 21].
 - **Connection**: Connect ESP32 via USB. The tool auto-detects COM ports.
 - **Baud Rate**: 115200
 
