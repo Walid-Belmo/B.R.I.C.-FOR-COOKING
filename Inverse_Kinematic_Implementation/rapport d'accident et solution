@@ -66,8 +66,8 @@ IMPACT ON SOFTWARE CONFIGURATION:
 - Any existing saved poses are likely DANGEROUS to run until fixed.
 
 REQUIRED ACTIONS:
-1. HARDWARE: Replace the stripped plastic servo horn with a METAL horn 
-   (e.g., Aluminium 25T).
+1. HARDWARE: Replace the stripped plastic servo horn with another smilar one (done) 
+   
 2. ASSEMBLY: Re-seat the arm onto the servo while the software is sending 
    the '1500us
 

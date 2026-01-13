@@ -39,7 +39,7 @@ B. CONNECT MAGNETS TO RELAY
    - Relay NO (Normally Open) -> Magnet (+)
    - Magnet (-) -> External Power (-)
 
-C. LE DEUXIEME GND DU RELAY MODULE AU GROUND DE L'ALIM EXTERNE 5V.
+C. LE DEUXIEME GND DU RELAY MODULE AU GROUND DE L'ALIM EXTERNE 5V.<venv_folder>\Scripts\activate<venv_folder>\Scripts\activate<venv_folder>\Scripts\activate<venv_folder>\Scripts\activate<venv_folder>\Scripts\activate<venv_folder>\Scripts\activate<venv_folder>\Scripts\activate<venv_folder>\Scripts\activate
 
 
 4. TESTING

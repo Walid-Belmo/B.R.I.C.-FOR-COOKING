@@ -5,3 +5,5 @@ logs/
 *.log
 *.pyc
 .claude/
+recorded_sequences/
+Double arm system/recorded_sequences_dual/
