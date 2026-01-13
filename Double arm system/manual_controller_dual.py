@@ -262,7 +262,17 @@ class DualArmManualControl:
         if not scene: return None
         
         path = os.path.join(BASE_REC_DIR, scene)
-        files = [f for f in os.listdir(path) if f.endswith(".json")]
+        if not os.path.exists(path):
+            try:
+                os.makedirs(path)
+            except:
+                return None
+
+        files = []
+        try:
+            files = [f for f in os.listdir(path) if f.endswith(".json")]
+        except Exception as e:
+            print(f"Error listing dir: {e}")
         
         # Determine next index
         idx = 1
@@ -348,76 +358,104 @@ class DualArmManualControl:
             self.is_recording = True
             self.rec_start_time = time.time()
             self.rec_data = []
-            self.btn_rec.config(text="STOP REC", foreground="red")
+            self.btn_rec.config(text="STOP REC")
             self.lbl_rec.config(text="🔴 REC", foreground="red")
+            
             # Snapshot start
             self.rec_snapshot(force=True)
+            print("Recording started.")
         else:
             # STOP & SAVE
             self.is_recording = False
-            self.btn_rec.config(text="REC", foreground="black")
+            self.btn_rec.config(text="REC")
             self.lbl_rec.config(text="⚫", foreground="gray")
+            
+            print(f"Stopping recording. Captured {len(self.rec_data)} points.")
+            
+            if len(self.rec_data) == 0:
+                messagebox.showwarning("Warning", "No data recorded! (Length is 0)")
+                return
+                
             self.save_sequence()
 
     def rec_snapshot(self, force=False):
         if not self.is_recording: return
         
-        t = round(time.time() - self.rec_start_time, 3)
-        
-        # Get current states
-        v1 = [int(v) for v in self.arm1_values]
-        v2 = [int(v) for v in self.arm2_values]
-        m1 = [self.arm1_magnets[0].get(), self.arm1_magnets[1].get()]
-        
-        # Check against last point
-        if not force and self.rec_data:
-            last = self.rec_data[-1]
-            if (last["a1"] == v1 and last["a2"] == v2 and last["m1"] == m1):
-                return
-                
-        self.rec_data.append({
-            "t": t,
-            "a1": v1,
-            "a2": v2,
-            "m1": m1
-        })
+        try:
+            t = round(time.time() - self.rec_start_time, 3)
+            
+            # Get current states
+            v1 = [int(v) for v in self.arm1_values]
+            v2 = [int(v) for v in self.arm2_values]
+            m1 = [bool(self.arm1_magnets[0].get()), bool(self.arm1_magnets[1].get())]
+            
+            # Check against last point
+            if not force and self.rec_data:
+                last = self.rec_data[-1]
+                if (last["a1"] == v1 and last["a2"] == v2 and last["m1"] == m1):
+                    return
+                    
+            self.rec_data.append({
+                "t": t,
+                "a1": v1,
+                "a2": v2,
+                "m1": m1
+            })
+        except Exception as e:
+            print(f"Snapshot error: {e}")
+            # If we repeatedly fail, we might want to know
+            if len(self.rec_data) == 0 and force:
+                 messagebox.showerror("Snapshot Error", f"Failed to record initial point:\n{e}")
 
     def save_sequence(self):
-        if not self.rec_data: return
-        
-        scene = self.current_scene.get()
-        fname = self.get_next_filename()
-        if not fname: return
-        
-        path = os.path.join(BASE_REC_DIR, scene, fname)
-        
-        # Meta
-        start_node = self.rec_data[0]
-        end_node = self.rec_data[-1]
-        
-        payload = {
-            "meta": {
-                "scene": scene,
-                "name": fname,
-                "created": time.ctime(),
-                "duration_sec": end_node["t"]
-            },
-            "start_arm1": start_node["a1"],
-            "start_arm2": start_node["a2"],
-            "end_arm1": end_node["a1"],
-            "end_arm2": end_node["a2"],
-            "timeline": self.rec_data
-        }
-        
-        with open(path, 'w') as f:
-            json.dump(payload, f, indent=2)
+        try:
+            if not self.rec_data: return
             
-        self.on_scene_selected(None) # Refresh list
+            scene = self.current_scene.get()
+            fname = self.get_next_filename()
+            if not fname: 
+                messagebox.showerror("Error", "Could not generate filename. Check path permissions.")
+                return
+            
+            path = os.path.join(BASE_REC_DIR, scene, fname)
+            
+            # Meta
+            start_node = self.rec_data[0]
+            end_node = self.rec_data[-1]
+            
+            payload = {
+                "meta": {
+                    "scene": scene,
+                    "name": fname,
+                    "created": time.ctime(),
+                    "duration_sec": end_node["t"]
+                },
+                "start_arm1": start_node["a1"],
+                "start_arm2": start_node["a2"],
+                "end_arm1": end_node["a1"],
+                "end_arm2": end_node["a2"],
+                "timeline": self.rec_data
+            }
+            
+            with open(path, 'w') as f:
+                json.dump(payload, f, indent=2)
+                
+            messagebox.showinfo("Saved", f"Sequence stored as:\n{fname}")
+            self.on_scene_selected(None) # Refresh list
+            
+        except Exception as e:
+            messagebox.showerror("Save Error", str(e))
 
     # ================= LOGIC: PLAYBACK =================
     def play_playlist(self):
-        if not self.playlist: return
+        if not self.playlist:
+            messagebox.showwarning("Empty Playlist", "Please add sequences to the playlist first.")
+            return
+        
+        # UI Feedback
+        self.btn_rec.config(state="disabled") # Lock recording
         self.stop_event.clear()
+        
         threading.Thread(target=self.run_playlist, daemon=True).start()
 
     def stop_playback(self):
@@ -425,64 +463,84 @@ class DualArmManualControl:
 
     def run_playlist(self): # Threaded
         self.is_playing = True
+        # Visual indicator
+        self.root.after(0, lambda: self.root.title("Dual Arm Director's Console - ▶ PLAYING..."))
         
-        for fpath in self.playlist:
-            if self.stop_event.is_set(): break
-            
-            try:
-                with open(fpath, 'r') as f:
-                    data = json.load(f)
+        try:
+            for fpath in self.playlist:
+                if self.stop_event.is_set(): break
                 
-                # Check start safety? (Optional: could warn here)
-                
-                timeline = data.get("timeline", [])
-                start_real_time = time.time()
-                
-                for point in timeline:
-                    if self.stop_event.is_set(): break
+                # Check file existence
+                if not os.path.exists(fpath):
+                    print(f"File not found: {fpath}")
+                    continue
+
+                try:
+                    with open(fpath, 'r') as f:
+                        data = json.load(f)
                     
-                    target_time = point["t"]
+                    timeline = data.get("timeline", [])
+                    if not timeline: continue
                     
-                    # Wait
-                    while (time.time() - start_real_time) < target_time:
+                    print(f"Playing {os.path.basename(fpath)} ({len(timeline)} points)")
+
+                    # Reset base time for this sequence
+                    start_real_time = time.time()
+                    
+                    for point in timeline:
                         if self.stop_event.is_set(): break
-                        time.sleep(0.01)
                         
-                    # Apply
-                    self.apply_state(point)
+                        target_time = point.get("t", 0)
+                        
+                        # Wait loop
+                        while (time.time() - start_real_time) < target_time:
+                            if self.stop_event.is_set(): break
+                            time.sleep(0.01)
+                            
+                        # Apply
+                        self.apply_state(point)
+                        
+                except Exception as e:
+                    err = f"Error playing {os.path.basename(fpath)}: {e}"
+                    print(err)
+                    self.root.after(0, lambda m=err: messagebox.showerror("Playback Error", m))
+                    break # Stop playlist on error
                     
-            except Exception as e:
-                print(f"Error playing {fpath}: {e}")
-                
-        self.is_playing = False
+        finally:
+            self.is_playing = False
+            self.root.after(0, lambda: self.root.title("Dual Arm Director's Console"))
+            self.root.after(0, lambda: self.btn_rec.config(state="normal"))
 
     def apply_state(self, point):
-        # Update Data
-        self.arm1_values = point["a1"]
-        self.arm2_values = point["a2"]
-        mag_state = point["m1"]
+        # Update Data - Robust usage with defaults
+        if "a1" in point: self.arm1_values = point["a1"]
+        if "a2" in point: self.arm2_values = point["a2"]
         
         # Update Magnets (Check change)
-        if mag_state != self.arm1_last_magnets:
-            # Need to update Tk vars safely? Actually we just fire the serial command here.
-            # We can't update Tk vars easily from thread without helper, but that's just visual.
-            # We prioritize hardware.
-            self.send_magnet_cmd(1, 0, mag_state[0])
-            self.send_magnet_cmd(1, 1, mag_state[1])
-            self.arm1_last_magnets = mag_state
+        if "m1" in point:
+            mag_state = point["m1"]
+            if mag_state != self.arm1_last_magnets:
+                self.send_magnet_cmd(1, 0, mag_state[0])
+                self.send_magnet_cmd(1, 1, mag_state[1])
+                self.arm1_last_magnets = mag_state
             
         # Update Sliders (Visual) - Schedule on Main Thread
         self.root.after(0, lambda p=point: self.sync_ui_to_state(p))
 
     def sync_ui_to_state(self, point):
-        for i in range(5):
-            self.arm1_sliders[i].set(point["a1"][i])
-            self.arm1_vars[i].set(point["a1"][i])
-            self.arm2_sliders[i].set(point["a2"][i])
-            self.arm2_vars[i].set(point["a2"][i])
-            
-        self.arm1_magnets[0].set(point["m1"][0])
-        self.arm1_magnets[1].set(point["m1"][1])
+        try:
+            if "a1" in point:
+                for i in range(5):
+                    self.arm1_sliders[i].set(point["a1"][i])
+                    self.arm1_vars[i].set(point["a1"][i])
+            if "a2" in point:
+                for i in range(5):
+                    self.arm2_sliders[i].set(point["a2"][i])
+                    self.arm2_vars[i].set(point["a2"][i])
+            if "m1" in point:
+                self.arm1_magnets[0].set(point["m1"][0])
+                self.arm1_magnets[1].set(point["m1"][1])
+        except: pass
 
     # ================= LOW LEVEL =================
     def on_slide(self, arm_id, idx, val):
